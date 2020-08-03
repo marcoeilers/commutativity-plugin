@@ -1,0 +1,173 @@
+import "library/pair.vpr"
+
+domain Unit {
+  function unit(): Unit
+}
+
+domain MSHelper {
+  function toMS(s: Seq[Int]) : Multiset[Int]
+  axiom toMS_length {
+    forall s: Seq[Int] :: {toMS(s)} |s| == |toMS(s)|
+  }
+  axiom toMS_concat {
+    forall s1: Seq[Int], s2: Seq[Int] :: {toMS(s1 ++ s2)} toMS(s1 ++ s2) == toMS(s1) union toMS(s2)
+  }
+  axiom toMS_singleton {
+    forall i: Int :: {toMS(Seq(i))} toMS(Seq(i)) == Multiset(i)
+  }
+}
+
+lockType Channel {
+  type Pair[Seq[Int], Pair[Seq[Int], Multiset[Int]]]
+  invariant(l, v) = [l.queue |-> ?lp && (isList(lp) && fst(v) == seqValue(lp)) &&
+                    [l.ghostSeq |-> ?gs && gs == fst(snd(v)) &&
+                    fst(v) == fst(snd(v))[..|fst(v)|] && snd(snd(v)) == toMS(fst(snd(v)))]]
+  secInvariant(v) = low(snd(snd(v)))
+
+  actions = [(Prod, Int, Unit, duplicable), (Cons, Unit, Int, duplicable)]
+
+  action Prod(v, arg)
+    requires low(arg)
+    ensures true
+  { pair(Seq(arg) ++ fst(v), pair(Seq(arg) ++ fst(snd(v)), Multiset(arg) union snd(snd(v)))), (unit()) }
+
+  action Cons(v, arg)
+    requires |fst(v)| > 0
+    ensures true
+  { pair(fst(v)[..|fst(v)|-1], snd(v)), (fst(v)[|fst(v)| - 1]) }
+
+  proof commutativity[Prod,Cons](v, arg1, arg2) {
+    //assert false
+  }
+  proof reordering[Prod,Cons](v, arg1, arg2) {
+    //assert false
+  }
+
+  proof preservation[Prod](v, arg) {
+    //assert false
+  }
+
+  proof preservation[Cons](v, arg) {
+    //assert false
+  }
+}
+
+predicate isList(r: Ref)
+function seqValue(r: Ref): Seq[Int]
+  requires acc(isList(r), 1/8)
+
+method emptyList() returns (r: Ref)
+  ensures isList(r) && seqValue(r) == Seq[Int]()
+
+method length(l: Ref) returns (r: Int)
+  requires acc(isList(l), 1/2)
+  ensures acc(isList(l), 1/2) && r == |seqValue(l)|
+
+method enqueue(l: Ref, i: Int)
+  requires isList(l)
+  ensures isList(l) && seqValue(l) == Seq(i) ++ old(seqValue(l))
+
+method dequeue(l: Ref) returns (r: Int)
+  requires isList(l) && |seqValue(l)| > 0
+  ensures isList(l) && seqValue(l) == old(seqValue(l)[..|seqValue(l)|-1])
+  ensures r == old(seqValue(l)[|seqValue(l)|-1])
+
+field queue: Ref
+field ghostSeq: Seq[Int]
+
+
+method main(inputs: Seq[Int], secret: Int)
+  requires lowEvent && low(inputs)
+  ensures true
+{
+
+  var l : Lock
+  l := newLock[Channel](queue, ghostSeq)
+  var list: Ref
+  list := emptyList()
+  l.queue := list
+  l.ghostSeq := Seq[Int]()
+  share[Channel](l, pair(Seq[Int](), pair(Seq[Int](), Multiset[Int]())))
+  var cons : Thread
+  var prod : Thread
+  prod := fork producer(inputs, l, secret)
+  cons := fork consumer(l, |inputs|, secret)
+  join[producer](prod)
+  join[consumer](cons)
+  acquire[Channel](l)
+  var contents : Seq[Int]
+  contents := seqValue(l.queue)
+  if (|contents| > 0) {
+    print(contents[0])
+  }
+}
+
+
+method producer(inputs: Seq[Int], l: Lock, secret: Int)
+  requires lowEvent && low(inputs) && lock[Channel](l, 1/2) && guard[Channel,Prod](l)
+  ensures lock[Channel](l, 1/2)
+{
+  var i : Int := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i) && lock[Channel](l, 1/2) && guard[Channel,Prod](l)
+  {
+    var newVal: Int
+    newVal  := compute1(inputs[i], secret)
+    acquire[Channel](l)
+
+    enqueue(l.queue, newVal)
+    l.ghostSeq := Seq(newVal) ++ l.ghostSeq
+    assert true // here i should not be able to prove the action
+    release[Channel](l, Prod(newVal))
+    i := i + 1
+  }
+}
+
+method consumer(l: Lock, n: Int, secret: Int)
+  requires lowEvent && n >= 0 && low(n) && lock[Channel](l, 1/2) && guard[Channel,Cons](l)
+  ensures lock[Channel](l, 1/2)
+{
+  var i : Int := 0
+  var res : Int
+  res := 0
+  while (i < n)
+    invariant i >= 0 && i <= n && low(i) && low(res) && lock[Channel](l, 1/2) && guard[Channel,Cons](l)
+  {
+    var recVal: Int
+    acquire[Channel](l)
+    var len : Int
+    len := length(l.queue)
+    while (len == 0)
+      invariant lock[Channel](l, 1/2) &&
+                [l.queue |-> ?lp && isList(lp) && len == |seqValue(lp)| &&
+                [l.ghostSeq |-> ?gs && locked[Channel](l, pair(seqValue(lp), pair(gs, toMS(gs))))
+                && seqValue(lp) == gs[..|seqValue(lp)|] ]]
+    {
+      release[Channel](l)
+      acquire[Channel](l)
+      len := length(l.queue)
+    }
+    var tmpBefore : Seq[Int]
+    //tmpBefore := seqValue(l.queue)
+    //assert l.ghostSeq[..|tmpBefore|] == tmpBefore
+    recVal := dequeue(l.queue)
+    //assert seqValue(l.queue) == tmpBefore[..|tmpBefore| - 1]
+    //assert l.ghostSeq[..|seqValue(l.queue)|] == seqValue(l.queue)
+
+    release[Channel](l, Cons(unit()))
+    res := aggregate(res, recVal, secret)
+    i := i + 1
+  }
+  print(res)
+}
+
+
+method compute1(val: Int, secret: Int) returns (r1: Int)
+  ensures low(val) ==> low(r1)
+
+method aggregate(sum: Int, val: Int, secret: Int) returns (r: Int)
+  ensures low(sum) && low(val) ==> low(r)
+
+method print(i: Int)
+  requires lowEvent && low(i)
+

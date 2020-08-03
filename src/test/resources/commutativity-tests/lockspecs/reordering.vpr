@@ -1,0 +1,83 @@
+field f1 : Seq[Int]
+
+lockType Okay {
+  type Seq[Int]
+  invariant(l, v0) = [l.f1 |-> ?fv1 && v0 == fv1]
+  secInvariant(v1) = true
+
+  actions = [(Prepend,Int,Int,unique),(First,Int,Int,unique)]
+
+  action Prepend(v, a)
+    requires low(a)
+    ensures true
+  { (Seq(a) ++ v), a }
+
+  action First(v, a)
+    requires |v| > 0
+    ensures true
+  { (v[1..]), (v[0]) }
+}
+
+lockType NotOkay {
+  type Seq[Int]
+  invariant(l, v0) = [l.f1 |-> ?fv1 && v0 == fv1]
+  secInvariant(v1) = true
+
+  actions = [(First,Int,Int,unique),(Prepend,Int,Int,unique)]
+
+  action Prepend(v, a)
+    requires low(a)
+    ensures true
+  { (Seq(a) ++ v), a }
+
+  action First(v, a)
+    //:: ExpectedOutput(reordering.check.failed:assertion.false)
+    requires |v| > 0
+    ensures true
+  { (v[1..]), (v[0]) }
+}
+
+lockType OkayBecauseAssume {
+  type Seq[Int]
+  invariant(l, v0) = [l.f1 |-> ?fv1 && v0 == fv1]
+  secInvariant(v1) = true
+
+  actions = [(First,Int,Int,unique),(Prepend,Int,Int,unique)]
+
+  action Prepend(v, a)
+    requires low(a)
+    ensures true
+  { (Seq(a) ++ v), a }
+
+  action First(v, a)
+    requires |v| > 0
+    ensures true
+  { (v[1..]), (v[0]) }
+
+  proof reordering[First,Prepend](val, arg1, arg2) {
+    assume |val| > 1
+  }
+}
+
+lockType NotOkayBecauseAssert {
+  type Seq[Int]
+  invariant(l, v0) = [l.f1 |-> ?fv1 && v0 == fv1]
+  secInvariant(v1) = true
+
+  actions = [(Prepend,Int,Int,unique),(First,Int,Int,unique)]
+
+  action Prepend(v, a)
+    requires low(a)
+    ensures true
+  { (Seq(a) ++ v), a }
+
+  action First(v, a)
+    requires |v| > 0
+    ensures true
+  { (v[1..]), (v[0]) }
+
+  proof reordering[Prepend, First](val, arg1, arg2) {
+    //:: ExpectedOutput(assert.failed:assertion.false)
+    assert false
+  }
+}

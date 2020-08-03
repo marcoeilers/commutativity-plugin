@@ -1,0 +1,119 @@
+field f: Int
+
+lockType Okay {
+  type Int
+  invariant(l, v) = [l.f |-[1/2]-> ?fv && v == 2*fv && v >= 0]
+  secInvariant(v) = low(v)
+
+  actions = [(Add,Int,Int,unique),(Add2,Int,Int,duplicable)]
+
+  action Add(v, a)
+    requires low(a) && a > 0
+    ensures low(result)
+  { (v + a), a }
+
+  action Add2(v, a)
+      requires low(a) && a > 0
+      ensures low(result)
+    { (v + a), a }
+}
+
+method okay() returns (l: Lock, val : Int)
+  requires lowEvent
+  ensures lock[Okay](l, write) && guard[Okay,Add](l) && guard[Okay,Add2](l) && guard[Okay,Add2](l) && seen[Okay](l, 46)
+{
+  l := newLock[Okay](f)
+  l.f := 23
+  share[Okay](l, 46)
+}
+
+method okaySmoke() returns (l: Lock, val : Int)
+  requires lowEvent
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
+  ensures false
+{
+  l := newLock[Okay](f)
+  l.f := 23
+  share[Okay](l, 46)
+}
+
+method doubleUniqueGuard() returns (l: Lock, val : Int)
+  requires lowEvent
+  //:: ExpectedOutput(postcondition.violated:insufficient.permission)
+  ensures lock[Okay](l, write) && guard[Okay,Add](l) && guard[Okay,Add](l)
+{
+  l := newLock[Okay](f)
+  l.f := 23
+  share[Okay](l, 46)
+}
+
+method doubleLock() returns (l: Lock, val : Int)
+  requires lowEvent
+  //:: ExpectedOutput(postcondition.violated:insufficient.permission)
+  ensures lock[Okay](l, 2/3) && lock[Okay](l, 1/2)
+{
+  l := newLock[Okay](f)
+  l.f := 23
+  share[Okay](l, 46)
+}
+
+method stillLocked() returns (l: Lock, val : Int)
+  requires lowEvent
+  //:: ExpectedOutput(postcondition.violated:insufficient.permission)
+  ensures lock[Okay](l, write) && locked[Okay](l, 46)
+{
+  l := newLock[Okay](f)
+  l.f := 23
+  share[Okay](l, 46)
+}
+
+method doubleShare() returns (l: Lock, val : Int)
+  requires lowEvent
+  ensures lock[Okay](l, write) && guard[Okay,Add](l) && guard[Okay,Add2](l) && guard[Okay,Add2](l)
+{
+  l := newLock[Okay](f)
+  l.f := 23
+  share[Okay](l, 46)
+  //:: ExpectedOutput(share.failed:insufficient.permission)
+  share[Okay](l, 46)
+}
+
+method noLowEvent() returns (l: Lock, val : Int)
+  requires true
+  ensures lock[Okay](l, write)
+{
+  l := newLock[Okay](f)
+  l.f := 23
+  //:: ExpectedOutput(share.failed:assertion.false)
+  share[Okay](l, 46)
+}
+
+method invNotFulfilled1() returns (l: Lock, val : Int)
+  requires lowEvent
+  ensures lock[Okay](l, write)
+{
+  l := newLock[Okay](f)
+  l.f := -23
+  //:: ExpectedOutput(share.failed:assertion.false)
+  share[Okay](l, -46)
+}
+
+method invNotFulfilled2() returns (l: Lock, val : Int)
+  requires lowEvent
+  ensures lock[Okay](l, write)
+{
+  l := newLock[Okay]()
+  //:: ExpectedOutput(share.failed:insufficient.permission)
+  share[Okay](l, -46)
+}
+
+
+method secInvNotFulfilled(h: Int) returns (l: Lock, val : Int)
+  requires lowEvent && h > 0
+  ensures lock[Okay](l, write)
+{
+  l := newLock[Okay](f)
+  l.f := h
+  //:: ExpectedOutput(share.failed:assertion.false)
+  share[Okay](l, 2*h)
+}

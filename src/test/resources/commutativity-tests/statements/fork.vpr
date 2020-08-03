@@ -1,0 +1,66 @@
+field f : Int
+
+method needsLow(i: Int)
+  requires low(i)
+
+method needsLowEvent()
+  requires lowEvent
+
+method needsNormal(r: Ref) returns (i: Int)
+  requires [r.f |-> ?j && j > 0]
+  ensures acc(r.f) && i == old(r.f)
+
+method forkOkay(intArg: Int) returns (t1: Thread, t2: Thread, t3: Thread, r0: Ref)
+  requires lowEvent && low(intArg)
+  ensures joinable[needsLow](t1, intArg)
+  ensures joinable[needsLowEvent](t2)
+  ensures joinable[needsNormal](t3, r0)
+{
+  inhale acc(r0.f) && r0.f > 3
+
+  t1 := fork needsLow(intArg)
+  t2 := fork needsLowEvent()
+  t3 := fork needsNormal(r0)
+}
+
+method forkSmoke(intArg: Int)
+  requires lowEvent && low(intArg)
+{
+  var t1: Thread
+  var t2: Thread
+  var t3: Thread
+  var t4: Thread
+  var r0 : Ref
+  inhale acc(r0.f) && r0.f > 3
+
+  t1 := fork needsLow(intArg)
+  t2 := fork needsLowEvent()
+  t3 := fork needsNormal(r0)
+  //:: ExpectedOutput(fork.failed:insufficient.permission)
+  t4 := fork needsNormal(r0)
+}
+
+method forkNotLow(intArg: Int) returns (t1: Thread, t2: Thread, t3: Thread, r0: Ref)
+{
+  //:: ExpectedOutput(fork.failed:assertion.false)
+  t1 := fork needsLow(intArg)
+}
+
+method forkNotPermission(intArg: Int) returns (t1: Thread, t2: Thread, t3: Thread, r0: Ref)
+{
+  //:: ExpectedOutput(fork.failed:insufficient.permission)
+  t3 := fork needsNormal(r0)
+}
+
+method forkNotUnary(intArg: Int) returns (t1: Thread, t2: Thread, t3: Thread, r0: Ref)
+{
+  inhale acc(r0.f)
+  //:: ExpectedOutput(fork.failed:assertion.false)
+  t3 := fork needsNormal(r0)
+}
+
+method forkNotLowEvent(intArg: Int) returns (t1: Thread, t2: Thread, t3: Thread, r0: Ref)
+{
+  //:: ExpectedOutput(fork.failed:assertion.false)
+  t2 := fork needsLowEvent()
+}

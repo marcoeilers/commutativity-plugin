@@ -1,0 +1,38 @@
+field f : Int
+
+method m(r: Ref, i0: Int) returns (i1: Int, i2: Int)
+  requires acc(r.f)
+  ensures acc(r.f) && i1 > i0 && r.f == i2
+
+method m2(r: Ref)
+  ensures [r.f |-> 99]
+
+method joinOkay(t0: Thread, t1: Thread, r0: Ref, r1: Ref) returns (my0: Int, my1: Int, my2: Int)
+  requires joinable[m](t0, r0, 44) && joinable[m2](t1, r1)
+{
+  my0, my1 := join[m](t0)
+  assert acc(r0.f) && r0.f == my1 && my0 > 44
+
+  join[m2](t1)
+  assert r1.f == 99
+}
+
+method doubleJoin(t0: Thread, t1: Thread, r0: Ref, r1: Ref) returns (my0: Int, my1: Int, my2: Int)
+  requires joinable[m](t0, r0, 44) && joinable[m2](t1, r1)
+{
+  my0, my1 := join[m](t0)
+  //:: ExpectedOutput(join.failed:insufficient.permission)
+  my0, my1 := join[m](t0)
+}
+
+method joinSmoke(t0: Thread, t1: Thread, r0: Ref, r1: Ref) returns (my0: Int, my1: Int, my2: Int)
+  requires joinable[m](t0, r0, 44) && joinable[m2](t1, r1)
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
+  ensures false
+{
+  my0, my1 := join[m](t0)
+  assert acc(r0.f) && r0.f == my1 && my0 > 44
+
+  join[m2](t1)
+  assert r1.f == 99
+}

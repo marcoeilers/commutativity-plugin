@@ -1,0 +1,149 @@
+field f1 : Int
+field f2 : Int
+
+domain Pair[T,V] {
+  function pair(t: T, v: V) : Pair[T,V]
+  function fst(p: Pair[T, V]) : T
+  function snd(p: Pair[T, V]) : V
+
+  axiom fst_def {
+    forall t: T, v: V :: {fst(pair(t, v))} fst(pair(t, v)) == t
+  }
+
+  axiom snd_def {
+    forall t: T, v: V :: {snd(pair(t, v))} snd(pair(t, v)) == v
+  }
+
+  axiom bijection {
+    forall p: Pair[T, V] :: {fst(p)}{snd(p)} pair(fst(p),snd(p))==p
+  }
+
+}
+
+// simple with secinv okay, not okay
+lockType Okay {
+  type Pair[Int, Int]
+  invariant(l, v) = [l.f1 |-> ?fv1 && fst(v) == fv1 && [l.f2 |-[1/2]-> ?fv2 && snd(v) == fv2]]
+  secInvariant(v) = low(fst(v))
+
+  actions = [(Add,Int,Int,unique),(Inc,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a)
+    ensures true
+  { pair(fst(v) + a, snd(v)), a }
+
+  action Inc(v, a)
+    requires true
+    ensures true
+  { pair(fst(v) + 1, a), a }
+}
+
+lockType NoCommute {
+  type Pair[Int, Int]
+  invariant(l, v) = [l.f1 |-> ?fv1 && fst(v) == fv1 && [l.f2 |-[1/2]-> ?fv2 && snd(v) == fv2]]
+  //:: ExpectedOutput(commutativity.check.failed:assertion.false)
+  secInvariant(v) = low(fst(v))
+
+  actions = [(Add,Int,Int,unique),(Mul,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a)
+    ensures true
+  { pair(fst(v) + a, snd(v)), a }
+
+  action Mul(v, a)
+    requires low(a)
+    ensures true
+  { pair(fst(v) * a, a), a }
+}
+
+lockType NoPost {
+  type Pair[Int, Int]
+  invariant(l, v) = [l.f1 |-> ?fv1 && fst(v) == fv1 && [l.f2 |-[1/2]-> ?fv2 && snd(v) == fv2]]
+  secInvariant(v) = low(fst(v))
+
+  actions = [(Add,Int,Int,unique),(Inc,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a)
+    //:: ExpectedOutput(commutativity.check.failed:assertion.false)
+    ensures low(result)
+  { pair(fst(v) + a, snd(v)), (fst(v) + a) }
+
+  action Inc(v, a)
+    requires true
+    ensures true
+  { pair(fst(v) + 1, a), a }
+}
+
+// one with itself, unique and duplicable
+lockType OkayBecauseUnique {
+  type Pair[Int, Int]
+  invariant(l, v) = [l.f1 |-> ?fv1 && fst(v) == fv1 && [l.f2 |-[1/2]-> ?fv2 && snd(v) == fv2]]
+  secInvariant(v) = low(fst(v))
+
+  actions = [(Sub,Int,Int,unique)]
+
+  action Sub(v, a)
+    requires low(a)
+    ensures true
+  { pair(a - fst(v), snd(v)), 0 }
+}
+
+lockType NotOkayBecauseDuplicable {
+  type Pair[Int, Int]
+  invariant(l, v) = [l.f1 |-> ?fv1 && fst(v) == fv1 && [l.f2 |-[1/2]-> ?fv2 && snd(v) == fv2]]
+  //:: ExpectedOutput(commutativity.check.failed:assertion.false)
+  secInvariant(v) = low(fst(v))
+
+  actions = [(Sub,Int,Int,duplicable)]
+
+    action Sub(v, a)
+      requires low(a)
+      ensures true
+    { pair(a - fst(v), snd(v)), 0 }
+}
+
+// proof makes it okay
+
+lockType OkayBecauseProofAssumption {
+  type Pair[Int, Int]
+    invariant(l, v) = [l.f1 |-> ?fv1 && fst(v) == fv1 && [l.f2 |-[1/2]-> ?fv2 && snd(v) == fv2]]
+    secInvariant(v) = low(fst(v))
+
+    actions = [(Sub,Int,Int,duplicable)]
+
+        action Sub(v, a)
+          requires low(a)
+          ensures true
+        { pair(a - fst(v), snd(v)), 0 }
+
+  proof commutativity[Sub, Sub](v, a1, a2) {
+    assume a1 == a2
+  }
+}
+
+// assert in proof
+lockType OkayButAssert {
+  type Pair[Int, Int]
+  invariant(l, v) = [l.f1 |-> ?fv1 && fst(v) == fv1 && [l.f2 |-[1/2]-> ?fv2 && snd(v) == fv2]]
+  secInvariant(v) = low(fst(v))
+
+  actions = [(Add,Int,Int,unique),(Inc,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a)
+    ensures true
+  { pair(fst(v) + a, snd(v)), a }
+
+  action Inc(v, a)
+    requires true
+    ensures true
+  { pair(fst(v) + 1, a), a }
+
+  proof commutativity[Add,Inc](v0, a1, a2) {
+    //:: ExpectedOutput(assert.failed:assertion.false)
+    assert false
+  }
+}

@@ -1,0 +1,54 @@
+field f: Int
+
+lockType Okay {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
+  secInvariant(v) = low(v)
+  histInvariant(v0, v1) = v0 <= v1
+
+  actions = [(Add,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a) && a > 0
+    ensures low(result)
+  { (v + a), a }
+}
+
+method okay(l: Lock) returns (r: Int)
+  requires lock[Okay](l, write)
+  ensures lock[Okay](l, write) && [l.f |-> ?fv && r == 2*fv && r >= 0] && locked[Okay](l, r) && seen[Okay](l, r)
+{
+  acquire[Okay](l)
+  r := 2*l.f
+}
+
+method smoke(l: Lock) returns (r: Int)
+  requires lock[Okay](l, write)
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
+  ensures false
+{
+  acquire[Okay](l)
+  r := 2*l.f
+}
+
+method noLock(l: Lock) returns (r: Int)
+{
+  //:: ExpectedOutput(acquire.failed:assertion.false)
+  acquire[Okay](l)
+  r := 2*l.f
+}
+
+method okayHist(l: Lock) returns (r: Int)
+  requires lock[Okay](l, write) && seen[Okay](l, 44)
+{
+  acquire[Okay](l)
+  assert l.f > 10
+}
+
+method histSmoke(l: Lock) returns (r: Int)
+  requires lock[Okay](l, write) && seen[Okay](l, 44)
+{
+  acquire[Okay](l)
+  //:: ExpectedOutput(assert.failed:assertion.false)
+  assert l.f > 50
+}

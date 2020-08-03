@@ -1,0 +1,28 @@
+field f: Int
+
+
+lockType Okay {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && v == 2*fv]
+  secInvariant(v) = low(v)
+
+  actions = []
+}
+
+//:: ExpectedOutput(uniqueness.check.failed:assertion.false)
+lockType NotDefined {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && true]
+  secInvariant(v) = low(v)
+
+  actions = []
+}
+
+//:: ExpectedOutput(uniqueness.check.failed:assertion.false)
+lockType NotUnique {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && v \ 2 == fv]
+  secInvariant(v) = low(v)
+
+  actions = []
+}

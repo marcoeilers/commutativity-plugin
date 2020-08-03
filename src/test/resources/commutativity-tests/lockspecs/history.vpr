@@ -1,0 +1,65 @@
+field f: Int
+
+lockType Okay {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
+  secInvariant(v) = low(v)
+
+  histInvariant(v1, v2) = v1 <= v2
+
+  actions = [(Add,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a) && a > 0
+    ensures true
+  { (v + a), a }
+}
+
+//:: ExpectedOutput(history.not.reflexive:assertion.false)
+lockType NotRefl {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
+  secInvariant(v) = low(v)
+
+  histInvariant(v1, v2) = v1 < v2
+
+  actions = [(Add,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a) && a > 0
+    ensures true
+  { (v + a), a }
+}
+
+//:: ExpectedOutput(history.not.transitive:assertion.false)
+lockType NotTrans {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && v == fv]
+  secInvariant(v) = low(v)
+
+  histInvariant(v1, v2) = v1 == v2 || v1 == v2 - 1
+
+  actions = [(Add,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a) && a == 1
+    ensures true
+  { (v + a), a }
+}
+
+//:: ExpectedOutput(history.not.preserved:assertion.false)
+lockType NotPreserved {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
+  secInvariant(v) = low(v)
+
+  histInvariant(v1, v2) = v1 <= v2
+
+  actions = [(Add,Int,Int,unique)]
+
+  action Add(v, a)
+    requires low(a)
+    ensures true
+  { (v + a), a }
+}
+
