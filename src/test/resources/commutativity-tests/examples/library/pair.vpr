@@ -4,11 +4,11 @@ domain Pair[T,V] {
   function snd(p: Pair[T, V]) : V
 
   axiom fst_def {
-    forall t: T, v: V :: {fst(pair(t, v))} fst(pair(t, v)) == t
+    forall t: T, v: V :: {pair(t, v)} fst(pair(t, v)) == t
   }
 
   axiom snd_def {
-    forall t: T, v: V :: {snd(pair(t, v))} snd(pair(t, v)) == v
+    forall t: T, v: V :: {pair(t, v)} snd(pair(t, v)) == v
   }
 
 }

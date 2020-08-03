@@ -26,9 +26,9 @@ domain Unit {
 lockType Channel {
   type Seq[Int]
   invariant(l, v) = [l.queue |-> ?lp && isList(lp) && v == seqValue(lp)]
-  secInvariant(v) = low(v)
+  alpha(v): Seq[Int] = v
 
-  actions = [(Prod, Int, Unit, unique), (Cons, Unit, Int, unique)]
+  actions = [(Prod, Int, unique), (Cons, Unit, unique)]
   
   action Prod(v, arg)
     requires low(arg)

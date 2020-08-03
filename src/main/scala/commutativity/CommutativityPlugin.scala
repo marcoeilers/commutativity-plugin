@@ -354,7 +354,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
 
         /////// alpha is well-defined
         val alphaWDV = LocalVarDecl("$alphaWDVar$" + getFreshInt(), t)()
-        val alphaWDInv = alpha.lowWithArg(Seq(alphaWDV.localVar))
+        val alphaWDInv = alpha.lowWithArg(alphaWDV.localVar)
         val alphaWDMethod = Method("$secWD$" + name + "$" + getFreshInt(), Seq(alphaWDV), Seq(), Seq(alphaWDInv), Seq(), None)(l.pos)
         newMethods.append(alphaWDMethod)
 

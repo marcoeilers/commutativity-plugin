@@ -31,7 +31,7 @@ object InvariantDef {
 case class InvariantDef(params: Seq[LocalVarDecl], inv: Exp){
   def subnodes = Seq(inv) ++ params
 
-  def expWithArgs(e: Exp, args: Seq[Exp]) : Exp = InvariantDef.arbitraryExpWithArgs(e, params, inv)
+  def expWithArgs(e: Exp, args: Seq[Exp]) : Exp = InvariantDef.arbitraryExpWithArgs(e, params, args)
 
   def permissionsWithArgs(args: Seq[Exp]) : Exp = expWithArgs(permissions, args)
   def pureWithArgs(args: Seq[Exp]) : Exp = expWithArgs(noPerms, args)

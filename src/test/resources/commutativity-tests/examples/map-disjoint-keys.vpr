@@ -65,19 +65,17 @@ domain Array {
 lockType MapLock {
   type Map[Int, Int]
   invariant(l, v) = [l.lockMap |-> ?mp && isMap(mp) && v == mapValue(mp)]
-  secInvariant(v) = low(v)
+  alpha(v): Map[Int, Int] = v
 
-  actions = [(Put1, Pair[Int, Int], Int, unique),(Put2, Pair[Int, Int], Int, unique)]
+  actions = [(Put1, Pair[Int, Int], unique),(Put2, Pair[Int, Int], unique)]
   
   action Put1(v, arg)
     requires low(arg) && key_split(fst(arg))
-    ensures true
   { (put(v, fst(arg), snd(arg))), (fst(arg)) }
 
   action Put2(v, arg)
       requires low(arg) && !key_split(fst(arg))
-      ensures true
-    { (put(v, fst(arg), snd(arg))), (fst(arg)) }
+    { (put(v, fst(arg), snd(arg))) }
 
   proof commutativity[Put1, Put2](v, arg1, arg2) {
     var r1 : Map[Int, Int] := put(put(v, fst(arg1), snd(arg1)), fst(arg2), snd(arg2))
