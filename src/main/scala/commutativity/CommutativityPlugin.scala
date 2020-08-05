@@ -862,6 +862,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
         }
       }
     })
+    println(qpTransformed)
     qpTransformed
   }
 

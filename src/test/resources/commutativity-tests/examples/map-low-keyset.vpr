@@ -1,55 +1,10 @@
+import "library/pair.vpr"
+import "library/map.vpr"
+import "library/array.vpr"
 
 method print(i: Seq[Int])
   requires lowEvent && low(i)
 
-domain Pair[T,V] {
-  function pair(t: T, v: V) : Pair[T,V]
-  function fst(p: Pair[T, V]) : T
-  function snd(p: Pair[T, V]) : V
-
-  axiom fst_def {
-    forall t: T, v: V :: {fst(pair(t, v))} fst(pair(t, v)) == t
-  }  
-
-  axiom snd_def {
-    forall t: T, v: V :: {snd(pair(t, v))} snd(pair(t, v)) == v
-  }
-
-}
-
-domain Map[T,V] {
-  function empty(): Map[T,V]
-  function keys(m: Map[T,V]): Set[T]
-  function get(m: Map[T,V], k: T) : V
-  function put(m: Map[T,V], k: T, v: V): Map[T,V]
-
-  axiom empty_def {
-    keys(empty()) == Set[T]() 
-  }
-
-  axiom put_keys {
-    forall m: Map[T,V], k: T, v: V :: {keys(put(m, k, v))} keys(put(m, k, v)) == keys(m) union Set(k) 
-  }
-
-  axiom put_get {
-    forall m: Map[T,V], k1: T, k2: T, v: V :: {get(put(m, k1, v), k2)} get(put(m, k1, v), k2) == (k1 == k2 ? v : get(m, k2))
-  }
-}
-
-domain Array {
-  function loc(a: Array, i: Int): Ref
-  function len(a: Array): Int
-  function loc_inv_arr(r: Ref): Array
-  function loc_inv_index(r: Ref): Int
-  
-  axiom all_diff {
-    forall a: Array, i: Int :: {loc(a, i)} loc_inv_arr(loc(a, i)) == a && loc_inv_index(loc(a, i)) == i
-  }
-
-  axiom length_nonneg {
-    forall a: Array :: len(a) >= 0
-  }
-}
 
 lockType MapLock {
   type Map[Int, Int]
@@ -63,28 +18,11 @@ lockType MapLock {
   { (put(v, fst(arg), snd(arg))) }
 }
 
-predicate isMap(r: Ref)
-function mapValue(r: Ref): Map[Int, Int]
-  requires isMap(r)
-
-field arr_loc: Ref
-method emptyArray(n: Int) returns (a: Array)
-  requires n >= 0
-  ensures len(a) == n && forall i : Int :: i >= 0 && i < n ==> [loc(a, i).arr_loc |-> _] 
-
 predicate joinableArrayEntry(rec: Ref, inputs: Seq[Int], l: Ref, secret: Int, p: Perm) {
   [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, secret, p)]
 }
 
 function toSeq(s: Set[Int]) : Seq[Int]
-
-method createMap() returns (r: Ref)
-  requires true
-  ensures isMap(r) && mapValue(r) == empty()
-
-method mapPut(r: Ref, k: Int, v: Int)
-  requires isMap(r)
-  ensures isMap(r) && mapValue(r) == put(old(mapValue(r)), k, v)
 
 field lockMap : Ref
 

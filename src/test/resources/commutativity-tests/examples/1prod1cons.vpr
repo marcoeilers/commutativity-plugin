@@ -1,44 +1,36 @@
+import "library/pair.vpr"
+import "library/unit.vpr"
+import "library/either.vpr"
 
+domain Nat {
+  function nat(i: Int): Nat
+  function nat_val(n: Nat): Int
 
-domain Pair[T,V] {
-  function pair(t: T, v: V) : Pair[T,V]
-  function fst(p: Pair[T, V]) : T
-  function snd(p: Pair[T, V]) : V
-
-  axiom fst_def {
-    forall t: T, v: V :: {fst(pair(t, v))} fst(pair(t, v)) == t
-  }  
-
-  axiom snd_def {
-    forall t: T, v: V :: {snd(pair(t, v))} snd(pair(t, v)) == v
+  axiom nat_val_and_equality {
+    (forall i: Int :: { nat(i) } nat_val(nat(i)) == (i > 0 ? i : -i))
+    &&
+    (forall i: Int :: { nat(i) } nat(i) == nat(-i))
+    &&
+    (forall n: Nat :: { nat_val(n) } nat(nat_val(n)) == n)
+    &&
+    (forall n: Nat :: { nat_val(n) } nat_val(n) >= 0 )
   }
-
-  axiom bijection {
-    forall p: Pair[T, V] :: {fst(p)}{snd(p)} pair(fst(p),snd(p))==p
-  }
-
-}
-
-domain Unit {
-  function unit(): Unit
 }
 
 lockType Channel {
-  type Seq[Int]
-  invariant(l, v) = [l.queue |-> ?lp && isList(lp) && v == seqValue(lp)]
-  alpha(v): Seq[Int] = v
+  type Either[Nat, Seq[Int]]
+  invariant(l, v) = [l.queue |-> ?lp && isList(lp) && v == (right(seqValue(lp)): Either[Nat, Seq[Int]])]
+  alpha(v): Either[Nat, Seq[Int]] = v
 
   actions = [(Prod, Int, unique), (Cons, Unit, unique)]
   
   action Prod(v, arg)
     requires low(arg)
-    ensures true
-  { (Seq(arg) ++ v), (unit()) }
+  { (is_right(v) ? (right(Seq(arg) ++ right_val(v)): Either[Nat, Seq[Int]]) : (nat_val(left_val(v)) > 0 ? (left(nat(nat_val(left_val(v)) - 1)): Either[Nat, Seq[Int]]) : (right(Seq[Int]()): Either[Nat, Seq[Int]]))) }
 
   action Cons(v, arg)
-    requires |v| > 0
-    ensures low(result)
-  { (v[..|v|-1]), (v[|v| - 1]) }
+    requires true
+  { (is_right(v) ? (|right_val(v)| > 0 ? (right(right_val(v)[..|right_val(v)|-1]): Either[Nat, Seq[Int]]) : (left(nat(0)): Either[Nat, Seq[Int]]) ) : (left(nat(nat_val(left_val(v)) + 1)): Either[Nat, Seq[Int]])) }
 }
 
 predicate isList(r: Ref)
@@ -74,7 +66,7 @@ method main(inputs: Seq[Int], secret: Int)
   var list: Ref
   list := emptyList()
   l.queue := list
-  share[Channel](l, Seq[Int]())
+  share[Channel](l, (let es == (Seq[Int]()) in (  right( es ) : Either[Nat, Seq[Int]] )) )
   var cons : Thread
   var prod : Thread
   prod := fork producer(inputs, l, secret)
@@ -116,7 +108,7 @@ method consumer(l: Lock, n: Int, secret: Int)
     var len : Int
     len := length(l.queue)
     while (len == 0)
-      invariant [l.queue |-> ?lp && isList(lp) && len == |seqValue(lp)| && lock[Channel](l, 1/4) && locked[Channel](l, seqValue(lp))]
+      invariant [l.queue |-> ?lp && isList(lp) && len == |seqValue(lp)| && lock[Channel](l, 1/4) && locked[Channel](l, (right(seqValue(lp)): Either[Nat, Seq[Int]]))]
     {
       release[Channel](l)
       acquire[Channel](l)

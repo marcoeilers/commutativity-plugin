@@ -8,9 +8,9 @@ domain Either[T,V] {
   function is_right(e: Either[T, V]): Bool
 
   axiom type_def {
-      (forall e: Either[T, V] ::  is_left(e) == either_type(e))
+      (forall e: Either[T, V] :: { is_left(e) } { either_type(e) }  is_left(e) == either_type(e))
       &&
-      (forall e: Either[T, V] ::  is_right(e) == !either_type(e))
+      (forall e: Either[T, V] :: { is_right(e) } { either_type(e) } is_right(e) == !either_type(e))
   }
 
   axiom left_def {
@@ -18,7 +18,7 @@ domain Either[T,V] {
     &&
     (forall t: T :: {(left(t): Either[T, V]) } either_type((left(t): Either[T, V])) == true)
     &&
-    (forall e: Either[T, V] :: {(left(left_val(e)): Either[T, V]) } is_left(e) ==> (left(left_val(e)): Either[T, V]) == e)
+    (forall e: Either[T, V] :: { left_val(e) } is_left(e) ==> (left(left_val(e)): Either[T, V]) == e)
   }
 
   axiom right_def {
@@ -26,7 +26,7 @@ domain Either[T,V] {
     &&
     (forall v: V :: {(right(v): Either[T, V]) } either_type((right(v): Either[T, V])) == false)
     &&
-    (forall e: Either[T, V] :: {(right(right_val(e)): Either[T, V]) } is_right(e) ==> (right(right_val(e)): Either[T, V]) == e)
+    (forall e: Either[T, V] :: { right_val(e) } is_right(e) ==> (right(right_val(e)): Either[T, V]) == e)
   }
 
 }
