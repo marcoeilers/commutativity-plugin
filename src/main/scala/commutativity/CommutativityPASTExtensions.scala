@@ -193,7 +193,7 @@ case class PProof(proofType: String, actions: Seq[PIdnUse], params: Seq[PIdnDef]
     Proof(proofType, actions map (_.name), (0 until params.length) map (i => LocalVarDecl(params(i).name, types(i))(t.liftPos(params(i)))), t.stmt(body).asInstanceOf[Seqn])
   }
 
-  def typecheck(tc: TypeChecker, ns: NameAnalyser, actionDecls: Seq[PLockActionDecl], t: PType) : Seq[String] = {
+  def typecheck(tc: TypeChecker, ns: NameAnalyser, actionDecls: Seq[PLockActionDecl], t: PType, locktype: String) : Seq[String] = {
     proofType match {
       case "preservation" => {
         if (actions.length != 1){
@@ -206,7 +206,7 @@ case class PProof(proofType: String, actions: Seq[PIdnUse], params: Seq[PIdnDef]
           return Seq("Unknown action: " + actions(0).name)
         }
         val fakeParams = Seq(PFormalArgDecl(PIdnDef(params(0).name), t), PFormalArgDecl(PIdnDef(params(1).name), actionDecl.get.argType))
-        val fakeMethod = PMethod(PIdnDef(actionDecl.get.idndef.name + "$proof$pres$"), fakeParams, Seq(), Seq(), Seq(), Some(body))
+        val fakeMethod = PMethod(PIdnDef(locktype + "$" + actionDecl.get.idndef.name + "$proof$pres$"), fakeParams, Seq(), Seq(), Seq(), Some(body))
         ns.namesInScope(fakeMethod, None)
         tc.checkDeclaration(fakeMethod)
         tc.checkBody(fakeMethod)
@@ -230,7 +230,7 @@ case class PProof(proofType: String, actions: Seq[PIdnUse], params: Seq[PIdnDef]
           return Seq("Incorrect action order in commutativity proof: " + actions(0).name + ", " + actions(1).name)
         }
         val fakeParams = Seq(PFormalArgDecl(PIdnDef(params(0).name), t), PFormalArgDecl(PIdnDef(params(1).name), a1.get.argType), PFormalArgDecl(PIdnDef(params(2).name), a2.get.argType))
-        val fakeMethod = PMethod(PIdnDef("$proof$comm$" + a1.get.idndef.name + "$" + a2.get.idndef.name), fakeParams, Seq(), Seq(), Seq(), Some(body))
+        val fakeMethod = PMethod(PIdnDef(locktype + "$" + "$proof$comm$" + a1.get.idndef.name + "$" + a2.get.idndef.name), fakeParams, Seq(), Seq(), Seq(), Some(body))
         ns.namesInScope(fakeMethod, None)
         tc.checkDeclaration(fakeMethod)
         tc.checkBody(fakeMethod)
@@ -260,7 +260,7 @@ case class PLockSpec(idndef: PIdnDef, t: PType, invariant: PInvariantDef, alpha:
       hist.get.typecheckHist(tc, n, t, idndef.name)
     }
     for (proof <- proofs) {
-      allErrors ++= proof.typecheck(tc, n, actionList, t)
+      allErrors ++= proof.typecheck(tc, n, actionList, t, idndef.name)
     }
     if (allErrors.isEmpty)
       None

@@ -512,7 +512,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
               val commName = "$commCheck$" + a1.name + "$" + a2.name + "$" + getFreshInt()
               val commParams = Seq(commOrigDecl, commFinalDecl, commChoiceDecl, commOrig1Decl, commOrig2Decl, commArg1Decl, commArg2Decl, commRes1Decl, commRes2Decl)
               val commPres = Seq(commPreA1, commPreA2, commOrigSecInv, commResA1, commResA2, commOptions)
-              val commPosts = Seq((commCheckSecInv, SIFLowExp(alpha.exp)())).map{case (p, po) => EqCmp(TrueLit()(), p)(a1.pos, errT=Trafos(List({
+              val commPosts = Seq((commCheckSecInv, SIFLowExp(alpha.exp)(alpha.exp.pos))).map{case (p, po) => EqCmp(TrueLit()(), p)(a1.pos, errT=Trafos(List({
                 case PostconditionViolated(node, _, reason, _) => CommutativityCheckFailed(a1.name, a2.name, node, reason)
               }), List(), Some(po)))}
 

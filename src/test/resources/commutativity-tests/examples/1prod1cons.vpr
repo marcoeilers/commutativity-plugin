@@ -31,6 +31,53 @@ lockType Channel {
   action Cons(v, arg)
     requires true
   { (is_right(v) ? (|right_val(v)| > 0 ? (right(right_val(v)[..|right_val(v)|-1]): Either[Nat, Seq[Int]]) : (left(nat(0)): Either[Nat, Seq[Int]]) ) : (left(nat(nat_val(left_val(v)) + 1)): Either[Nat, Seq[Int]])) }
+
+  proof commutativity[Prod, Cons](v, arg1, arg2) {
+    if (is_right(v) && |right_val(v)| > 0) {
+      assert (Seq(arg1) ++ right_val(v))[..|(Seq(arg1) ++ right_val(v))|-1] == (Seq(arg1) ++ (right_val(v)[..|right_val(v)|-1]))
+    }
+  }
+}
+
+lockType Channel2 {
+  type Pair[Seq[Int], Either[Nat, Seq[Int]]]
+  invariant(l, v) = [l.queue |-> ?lp && isList(lp) && [l.history |-> ?hi && |hi| >= |seqValue(lp)| && hi[..|seqValue(lp)|] == seqValue(lp) && v == pair(hi, right(seqValue(lp))) ]]
+  alpha(v): Pair[Seq[Int], Either[Nat, Seq[Int]]] = v
+
+  actions = [(Prod, Int, unique), (Cons, Unit, unique)]
+
+  action Prod(pv, arg)
+    requires low(arg)
+  { (pair(Seq(arg) ++ fst(pv), let v == (snd(pv)) in
+    (is_right(v) ?
+      (right(Seq(arg) ++ right_val(v)): Either[Nat, Seq[Int]]) :
+      (nat_val(left_val(v)) > 0 ?
+        (left(nat(nat_val(left_val(v)) - 1)): Either[Nat, Seq[Int]]) :
+        (right(Seq[Int]()): Either[Nat, Seq[Int]])))
+    ))}
+
+  action Cons(pv, arg)
+    requires true
+  {
+    (pair(fst(pv), let v == (snd(pv)) in
+    (is_right(v) ?
+      (|right_val(v)| > 0 ?
+        (right(right_val(v)[..|right_val(v)|-1]): Either[Nat, Seq[Int]]) :
+        (left(nat(0)): Either[Nat, Seq[Int]]) ) :
+      (left(nat(nat_val(left_val(v)) + 1)): Either[Nat, Seq[Int]]))
+    ))
+  }
+
+  proof commutativity[Prod, Cons](pv, arg1, arg2) {
+    var v: Either[Nat, Seq[Int]]
+    v := snd(pv)
+    if (is_right(v) && |right_val(v)| > 0) {
+      assert (Seq(arg1) ++ right_val(v))[..|(Seq(arg1) ++ right_val(v))|-1] == (Seq(arg1) ++ (right_val(v)[..|right_val(v)|-1]))
+    }
+    //if (is_left(v)) {
+    //  assert false
+    //}
+  }
 }
 
 predicate isList(r: Ref)
@@ -54,6 +101,7 @@ method dequeue(l: Ref) returns (r: Int)
   ensures r == old(seqValue(l)[|seqValue(l)|-1])
 
 field queue: Ref
+field history: Seq[Int]
 
 
 method main(inputs: Seq[Int], secret: Int)
