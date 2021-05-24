@@ -3,69 +3,38 @@ field f : Int
 lockType Okay {
   type Int
   invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
-  actions = [(Add,Int,Int,unique)]
+  actions = [(Add,Int,unique)]
 
   action Add(v, a)
     requires low(a) && a > 0
-    ensures low(result)
-  { (v + a), a }
-}
-
-lockType NotPos {
-  type Int
-  invariant(l, v) = [l.f |-> ?fv && v == 2*fv]
-  //:: ExpectedOutput(preservation.check.failed:assertion.false)
-  secInvariant(v) = (low(v) && v >= 0)
-
-  actions = [(Add,Int,Int,unique)]
-
-  action Add(v, a)
-    requires low(a)
-    ensures low(result)
-  { (v + a), a }
+  { (v + a) }
 }
 
 lockType NotLow {
   type Int
   invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
   //:: ExpectedOutput(preservation.check.failed:assertion.false)
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
-  actions = [(Add,Int,Int,unique)]
+  actions = [(Add,Int,unique)]
 
   action Add(v, a)
     requires a > 0
-    ensures true
-  { (v + a), a }
-}
-
-lockType NotPost {
-  type Int
-  invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
-  secInvariant(v) = low(v)
-
-  actions = [(Add,Int,Int,unique)]
-
-  action Add(v, a)
-    requires true
-    //:: ExpectedOutput(preservation.check.failed:assertion.false)
-    ensures low(result)
-  { (v + 1), a }
+  { (v + a) }
 }
 
 lockType NotLowButAssumeInProof {
   type Int
   invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
-  actions = [(Add,Int,Int,unique)]
+  actions = [(Add,Int,unique)]
 
   action Add(v, a)
     requires a > 0
-    ensures true
-  { (v + a), a }
+  { (v + a) }
 
   proof preservation[Add](v0, a0) {
     assume low(a0)
@@ -75,14 +44,13 @@ lockType NotLowButAssumeInProof {
 lockType OkayButAssertFalse {
   type Int
   invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
-  actions = [(Add,Int,Int,unique)]
+  actions = [(Add,Int,unique)]
 
   action Add(v, a)
     requires low(a) && a > 0
-    ensures low(result)
-  { (v + a), a }
+  { (v + a) }
 
   proof preservation[Add](v, a) {
     //:: ExpectedOutput(assert.failed:assertion.false)

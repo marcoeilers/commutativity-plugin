@@ -3,19 +3,18 @@ field f: Int
 lockType Okay {
   type Int
   invariant(l, v) = [l.f |-> ?fv && v == 2*fv && v >= 0]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
-  actions = [(Add,Int,Int,unique)]
+  actions = [(Add,Int,unique)]
 
   action Add(v, a)
-    requires low(a) && a > 0
-    ensures low(result)
-  { (v + a), a }
+    requires low(a)
+  { (v + a) }
 }
 
 method okayChange(l: Lock, oldVal : Int, newVal: Int, ar: Int)
   requires lowEvent && lock[Okay](l, 1/2) && locked[Okay](l, oldVal) && [l.f |-> ?fv && newVal == 2*fv && newVal >= 0] && guard[Okay,Add](l)
-  ensures lock[Okay](l, 1/2) && seen[Okay](l, newVal)
+  ensures lock[Okay](l, 1/2)
 {
   assume newVal == oldVal + ar
   assume low(ar) && ar > 0
@@ -29,15 +28,6 @@ method okaySmoke(l: Lock, oldVal : Int, newVal: Int, ar: Int)
 {
   assume newVal == oldVal + ar
   assume low(ar) && ar > 0
-  release[Okay](l, Add(ar))
-}
-
-method unaryPreNotFulfilled(l: Lock, oldVal : Int, newVal: Int, ar: Int)
-  requires lowEvent && lock[Okay](l, write) && locked[Okay](l, oldVal) && [l.f |-> ?fv && newVal == 2*fv && newVal >= 0] && guard[Okay,Add](l)
-{
-  assume newVal == oldVal + ar
-  assume low(ar)
-  //:: ExpectedOutput(release.failed:assertion.false)
   release[Okay](l, Add(ar))
 }
 

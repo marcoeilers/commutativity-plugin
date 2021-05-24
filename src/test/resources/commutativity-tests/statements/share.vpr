@@ -3,24 +3,22 @@ field f: Int
 lockType Okay {
   type Int
   invariant(l, v) = [l.f |-[1/2]-> ?fv && v == 2*fv && v >= 0]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
-  actions = [(Add,Int,Int,unique),(Add2,Int,Int,duplicable)]
+  actions = [(Add,Int,unique),(Add2,Int,duplicable)]
 
   action Add(v, a)
     requires low(a) && a > 0
-    ensures low(result)
-  { (v + a), a }
+  { (v + a) }
 
   action Add2(v, a)
       requires low(a) && a > 0
-      ensures low(result)
-    { (v + a), a }
+    { (v + a) }
 }
 
 method okay() returns (l: Lock, val : Int)
   requires lowEvent
-  ensures lock[Okay](l, write) && guard[Okay,Add](l) && guard[Okay,Add2](l) && guard[Okay,Add2](l) && seen[Okay](l, 46)
+  ensures lock[Okay](l, write) && guard[Okay,Add](l) && guard[Okay,Add2](l) && guard[Okay,Add2](l)
 {
   l := newLock[Okay](f)
   l.f := 23

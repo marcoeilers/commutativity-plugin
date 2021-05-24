@@ -354,7 +354,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
 
         /////// alpha is well-defined
         val alphaWDV = LocalVarDecl("$alphaWDVar$" + getFreshInt(), t)()
-        val alphaWDInv = alpha.lowWithArg(alphaWDV.localVar)
+        val alphaWDInv = alpha.lowWithArg(alphaWDV.localVar, alpha.exp.pos)
         val alphaWDMethod = Method("$secWD$" + name + "$" + getFreshInt(), Seq(alphaWDV), Seq(), Seq(alphaWDInv), Seq(), None)(l.pos)
         newMethods.append(alphaWDMethod)
 
@@ -379,13 +379,13 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
             case PostconditionViolated(node, _, reason, _) => PreservationCheckFailed(a.name, node, reason)
           })
           //val presPostcond = a.post.replaceT(a.params(0).localVar, presOrigVar.localVar).replaceT(a.params(1).localVar, presArgVar.localVar).replaceT(Result(a.retType)(), presRetVar.localVar)
-          val presSecInvFinal = alpha.lowWithArg(presFinalVar.localVar)
+          val presSecInvFinal = alpha.lowWithArg(presFinalVar.localVar, alpha.exp.pos)
           val presProof = proofs.find(p => p.proofType == "preservation" && p.actions.length == 1 && p.actions(0) == a.name)
           val presBody = presProof match {
             case None => Some(Seqn(Seq(), Seq())())
             case Some(p) => Some(p.body.replaceT(p.params(0).localVar, presOrigVar.localVar).replaceT(p.params(1).localVar, presArgVar.localVar))
           }
-          val presPosts = Seq((presSecInvFinal, SIFLowExp(alpha.exp)())).map{case (p: Exp, po: Exp) => EqCmp(TrueLit()(), p)(a.pos, errT=Trafos(List({
+          val presPosts = Seq((presSecInvFinal, SIFLowExp(alpha.exp)(alpha.exp.pos))).map{case (p: Exp, po: Exp) => EqCmp(TrueLit()(), p)(a.pos, errT=Trafos(List({
             case PostconditionViolated(node, _, reason, _) => PreservationCheckFailed(a.name, node, reason)
           }), List(), Some(po)))}
           val presMethod = Method("$presCheck$" + getFreshInt(), Seq(presOrigVar, presArgVar, presFinalVar), Seq(), Seq(presSecInv, presPrecond, presFinalValEq), presPosts, presBody)(a.pos, errT=preservationTrafo)
@@ -597,11 +597,11 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
         val eq = EqCmp(funcApp, value)(pt.pos, errT=NodeTrafo(pt))
         And(pap, eq)(pt.pos, errT=NodeTrafo(pt))
       }
-      case l@Seen(lt, r, value) => {
-        val pt = l
-        val fa = FuncApp(seenFuncNames.get(lt).get, Seq(r, value))(pt.pos, pt.info, Bool, NodeTrafo(l))
-        fa
-      }
+      //case l@Seen(lt, r, value) => {
+      //  val pt = l
+      //  val fa = FuncApp(seenFuncNames.get(lt).get, Seq(r, value))(pt.pos, pt.info, Bool, NodeTrafo(l))
+      //  fa
+      //}
       case pt@Guard(lt, g, lock) => {
         val action = lockSpecs.get(lt).get.actions.find(a => a.name == g).get
         val pa = PredicateAccess(Seq(lock), actionGuardNames.get(lt).get.get(g).get)()
@@ -862,7 +862,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
         }
       }
     })
-    println(qpTransformed)
+    //println(qpTransformed)
     qpTransformed
   }
 

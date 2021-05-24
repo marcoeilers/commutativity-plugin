@@ -23,14 +23,21 @@ lockType Channel {
   alpha(v): Either[Nat, Seq[Int]] = v
 
   actions = [(Prod, Int, unique), (Cons, Unit, unique)]
-  
+
   action Prod(v, arg)
     requires low(arg)
   { (is_right(v) ? (right(Seq(arg) ++ right_val(v)): Either[Nat, Seq[Int]]) : (nat_val(left_val(v)) > 0 ? (left(nat(nat_val(left_val(v)) - 1)): Either[Nat, Seq[Int]]) : (right(Seq[Int]()): Either[Nat, Seq[Int]]))) }
 
   action Cons(v, arg)
     requires true
-  { (is_right(v) ? (|right_val(v)| > 0 ? (right(right_val(v)[..|right_val(v)|-1]): Either[Nat, Seq[Int]]) : (left(nat(0)): Either[Nat, Seq[Int]]) ) : (left(nat(nat_val(left_val(v)) + 1)): Either[Nat, Seq[Int]])) }
+  { (is_right(v) ?
+      (|right_val(v)| > 0 ?
+        (right(right_val(v)[.. (|right_val(v)| -1)]
+               ): Either[Nat, Seq[Int]]) :
+        (left(nat(0)): Either[Nat, Seq[Int]])
+      ) :
+      (left(nat(nat_val(left_val(v)) + 1)): Either[Nat, Seq[Int]])
+    ) }
 
   proof commutativity[Prod, Cons](v, arg1, arg2) {
     if (is_right(v) && |right_val(v)| > 0) {

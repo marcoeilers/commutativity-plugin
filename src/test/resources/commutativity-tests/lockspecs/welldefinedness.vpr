@@ -5,7 +5,7 @@ lockType InvNotWelldef {
   type Int
   //:: ExpectedOutput(not.wellformed:division.by.zero)
   invariant(l, v) = [l.f |-> ?fv && v == 2\fv]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
   actions = []
 
@@ -16,7 +16,7 @@ lockType InvNotWelldef2 {
   type Int
   //:: ExpectedOutput(not.wellformed:insufficient.permission)
   invariant(l, v) = [l.f |-> ?fv && v == l.f2]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
   actions = []
 
@@ -27,7 +27,7 @@ lockType SecInvNotWelldef {
   type Int
   invariant(l, v) = [l.f |-> ?fv && v == fv]
   //:: ExpectedOutput(not.wellformed:division.by.zero)
-  secInvariant(v) = low(2\(v+1))
+  alpha(v): Int = (2 \ (v+1))
 
   actions = []
 }
@@ -36,55 +36,25 @@ lockType SecInvNotWelldef {
 lockType NewValNotWellDef {
   type Int
   invariant(l, v) = [l.f |-> ?fv && v == fv]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
-  actions = [(Add,Int,Int,unique)]
+  actions = [(Add,Int,unique)]
 
   action Add(v, a)
     requires low(a)
-    ensures low(result)
   //:: ExpectedOutput(not.wellformed:division.by.zero)
-  { (v \ a), a }
-}
-
-lockType RetValNotWellDef {
-  type Int
-  invariant(l, v) = [l.f |-> ?fv && v == fv]
-  secInvariant(v) = low(v)
-
-  actions = [(Add,Int,Int,unique)]
-
-  action Add(v, a)
-    requires low(a)
-    ensures low(result)
-  //:: ExpectedOutput(not.wellformed:division.by.zero)
-  { (v + a), (v \ (a+2)) }
-}
-
-lockType PostNotWellDef {
-  type Int
-  invariant(l, v) = [l.f |-> ?fv && v == fv]
-  secInvariant(v) = low(v)
-
-  actions = [(Add,Int,Int,unique)]
-
-  action Add(v, a)
-    requires low(a)
-    //:: ExpectedOutput(not.wellformed:division.by.zero)
-    ensures low(2 \result)
-  { (v + (a)), a }
+  { (v \ a) }
 }
 
 lockType PreNotWellDef {
   type Int
   invariant(l, v) = [l.f |-> ?fv && v == fv]
-  secInvariant(v) = low(v)
+  alpha(v): Int = v
 
-  actions = [(Add,Int,Int,unique)]
+  actions = [(Add,Int,unique)]
 
   action Add(v, a)
     //:: ExpectedOutput(not.wellformed:division.by.zero)
     requires low(2\a)
-    ensures low(2 \ result)
-  { (v + a), a }
+  { (v + a) }
 }

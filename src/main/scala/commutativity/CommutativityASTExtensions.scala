@@ -12,7 +12,7 @@ case class AlphaDef(param: LocalVarDecl, typ: Type, exp: Exp)  {
 
   def withArg(arg: Exp) : Exp = InvariantDef.arbitraryExpWithArgs(exp, Seq(param), Seq(arg))
 
-  def lowWithArg(arg: Exp) : Exp = SIFLowExp(InvariantDef.arbitraryExpWithArgs(exp, Seq(param), Seq(arg)))()
+  def lowWithArg(arg: Exp, pos: Position = NoPosition) : Exp = SIFLowExp(InvariantDef.arbitraryExpWithArgs(exp, Seq(param), Seq(arg)))(pos)
 }
 
 object InvariantDef {
