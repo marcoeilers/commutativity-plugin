@@ -1,0 +1,104 @@
+import "library/array.vpr"
+import "library/list.vpr"
+import "library/seq_multiset.vpr"
+
+
+domain SomeValue {}
+
+method print(i: Seq[Int])
+  requires lowEvent && low(i)
+
+method compute(val: Int, secret: Int) returns (r1: Int)
+  ensures low(val) ==> low(r1)
+
+
+
+method sortList(r: Ref)
+  requires list(r)
+  ensures list(r)
+  ensures low(old(seq_to_ms(listValue(r)))) ==> low(listValue(r))
+
+field lockList : Ref
+
+
+lockType ListLock {
+  type Seq[Int]
+  invariant(l, v) = [l.lockList |-> ?lp && list(lp) && v == listValue(lp)]
+  alpha(v): Multiset[Int] = seq_to_ms(v)
+
+  actions = [(Append, Int, duplicable)]
+
+  action Append(v, arg)
+    requires low(arg)
+  { (v ++ Seq(arg)) }
+}
+
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[Int], l: Ref, secret: Int, p: Perm) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, secret, p)]
+}
+
+function toSeq(s: Set[Int]) : Seq[Int]
+
+
+
+method main(inputs: Seq[Seq[Int]], secret: Int)
+  requires lowEvent && low(inputs)
+  ensures true
+{
+  var lst : Ref
+  lst := createList()
+  var l : Lock
+  l := newLock[ListLock](lockList)
+  l.lockList := lst
+  share[ListLock](l, Seq[Int]())
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|inputs|)
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, 1/(|inputs| + 1))
+    invariant lock[ListLock](l, (|inputs|+1-i)/(|inputs| + 1))
+    invariant guard[ListLock,Append](l)
+  {
+    var t: Thread
+    t := fork worker(inputs[i], l, secret, 1/(|inputs| + 1))
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, 1/(|inputs| + 1))
+    i := i + 1
+  }
+
+  i := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, 1/(|inputs| + 1))
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _]
+    invariant lock[ListLock](l, (i+1)/(|inputs| + 1))
+  {
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, 1/(|inputs| + 1))
+    join[worker](loc(threads, i).arr_loc)
+    i := i + 1
+  }
+  acquire[ListLock](l)
+  sortList(l.lockList)
+  print(listValue(l.lockList))
+
+}
+
+
+method worker(inputs: Seq[Int], l: Lock, secret: Int, p: Perm)
+  requires lowEvent && low(inputs) && lock[ListLock](l, p) && guard[ListLock,Append](l) && p > none
+  ensures lock[ListLock](l, p)
+{
+  var i : Int := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i) && lock[ListLock](l, p) && guard[ListLock,Append](l)
+  {
+    var v: Int
+    v := compute(inputs[i], secret)
+    acquire[ListLock](l)
+    append(l.lockList, v)
+    release[ListLock](l, Append(v))
+    i := i + 1
+  }
+}

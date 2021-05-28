@@ -8,7 +8,7 @@ lockType Okay {
   actions = [(Add,Int,unique)]
 
   action Add(v, a)
-    requires low(a)
+    requires low(a) && a >0
   { (v + a) }
 }
 
@@ -36,6 +36,15 @@ method relationalPreNotFulfilled(l: Lock, oldVal : Int, newVal: Int, ar: Int)
 {
   assume newVal == oldVal + ar
   assume ar > 0
+  //:: ExpectedOutput(release.failed:assertion.false)
+  release[Okay](l, Add(ar))
+}
+
+method unaryPreNotFulfilled(l: Lock, oldVal : Int, newVal: Int, ar: Int)
+  requires lowEvent && lock[Okay](l, write) && locked[Okay](l, oldVal) && [l.f |-> ?fv && newVal == 2*fv && newVal >= 0] && guard[Okay,Add](l)
+{
+  assume newVal == oldVal + ar
+  assume low(ar)
   //:: ExpectedOutput(release.failed:assertion.false)
   release[Okay](l, Add(ar))
 }

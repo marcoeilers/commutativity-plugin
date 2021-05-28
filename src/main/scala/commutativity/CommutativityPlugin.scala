@@ -37,7 +37,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
   import fastparse.noApi._
 
   override lazy val newDeclAtEnd = P(lockSpec | barrierSpec)
-  override lazy val newExpAtStart = P(pointsToPred | joinable | low | lowEvent | locked | lock | barrier | guard)
+  override lazy val newExpAtStart = P(pointsToPred | joinable | low | rel | lowEvent | locked | lock | barrier | guard)
   override lazy val newStmtAtStart = P(fork | join | newLock | newBarrier | acquire | release | share | waitStmt)
 
   lazy val cStyleMethod : P[PMethod] = P(ctyp ~ idndef ~ parens(cvardecl.rep(sep=",")) ~ "{" ~ "}").map{
@@ -130,6 +130,9 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
   }
   lazy val low : P[PLow] = P(keyword("low") ~/ parens(exp)).map{
     case arg => PLow(arg)
+  }
+  lazy val rel : P[PRel] = P(keyword("rel") ~/ parens(idnuse ~ "," ~ integer)).map{
+    case (arg, i) => PRel(arg, i)
   }
   lazy val lowEvent : P[PLowEvent] = P(keyword("lowEvent")).map{
     case arg => PLowEvent()
@@ -388,7 +391,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
           val presPosts = Seq((presSecInvFinal, SIFLowExp(alpha.exp)(alpha.exp.pos))).map{case (p: Exp, po: Exp) => EqCmp(TrueLit()(), p)(a.pos, errT=Trafos(List({
             case PostconditionViolated(node, _, reason, _) => PreservationCheckFailed(a.name, node, reason)
           }), List(), Some(po)))}
-          val presMethod = Method("$presCheck$" + getFreshInt(), Seq(presOrigVar, presArgVar, presFinalVar), Seq(), Seq(presSecInv, presPrecond, presFinalValEq), presPosts, presBody)(a.pos, errT=preservationTrafo)
+          val presMethod = Method("$presCheck$" + getFreshInt(), Seq(presOrigVar, presArgVar, presFinalVar), Seq(), Seq(SIFLowEventExp()(), presSecInv, presPrecond, presFinalValEq), presPosts, presBody)(a.pos, errT=preservationTrafo)
           newMethods.append(presMethod)
 
 
@@ -511,7 +514,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
 
               val commName = "$commCheck$" + a1.name + "$" + a2.name + "$" + getFreshInt()
               val commParams = Seq(commOrigDecl, commFinalDecl, commChoiceDecl, commOrig1Decl, commOrig2Decl, commArg1Decl, commArg2Decl, commRes1Decl, commRes2Decl)
-              val commPres = Seq(commPreA1, commPreA2, commOrigSecInv, commResA1, commResA2, commOptions)
+              val commPres = Seq(SIFLowEventExp()(), commPreA1, commPreA2, commOrigSecInv, commResA1, commResA2, commOptions)
               val commPosts = Seq((commCheckSecInv, SIFLowExp(alpha.exp)(alpha.exp.pos))).map{case (p, po) => EqCmp(TrueLit()(), p)(a1.pos, errT=Trafos(List({
                 case PostconditionViolated(node, _, reason, _) => CommutativityCheckFailed(a1.name, a2.name, node, reason)
               }), List(), Some(po)))}

@@ -1,0 +1,130 @@
+import "library/pair.vpr"
+import "library/map.vpr"
+import "library/array.vpr"
+
+import "library/either.vpr"
+
+method print(mp: Ref)
+  requires lowEvent && isMap(mp) && low(mapValue(mp))
+
+domain ArbitraryFunction {
+  function someFunc(v1: Int, v2: Int): Int
+
+  axiom someFunc_commutes {
+    forall v1: Int, v2: Int :: { someFunc(v1, v2) } someFunc(v1, v2) == someFunc(v2, v1)
+  }
+
+  axiom someFunc_associativity {
+    forall v1: Int, v2: Int, v3: Int :: { someFunc(v1, someFunc(v2, v3)) } someFunc(v1, someFunc(v2, v3)) == someFunc(someFunc(v1, v2), v3)
+  }
+}
+
+lockType MapLock {
+  type Map[Int, Int]
+  invariant(l, v) = [l.lockMap |-> ?mp && isMap(mp) && v == mapValue(mp)]
+  alpha(v): Map[Int, Int] = v
+
+  actions = [(AddValue, Pair[Int, Int], duplicable)]
+  
+  action AddValue(v, arg)
+    requires low(arg)
+  { (fst(arg) in keys(v) ? put(v, fst(arg), someFunc(snd(arg), get(v, fst(arg)))) : put(v, fst(arg), snd(arg))) }
+
+  proof commutativity[AddValue, AddValue](v, arg1, arg2) {
+    var r11 : Map[Int, Int]
+    var r12 : Map[Int, Int]
+    var r21 : Map[Int, Int]
+    var r22 : Map[Int, Int]
+
+    r11 := (fst(arg1) in keys(v) ? put(v, fst(arg1), someFunc(snd(arg1), get(v, fst(arg1)))) : put(v, fst(arg1), snd(arg1)))
+    r12 := (fst(arg2) in keys(r11) ? put(r11, fst(arg2), someFunc(snd(arg2), get(r11, fst(arg2)))) : put(r11, fst(arg2), snd(arg2)))
+
+    r21 := (fst(arg2) in keys(v) ? put(v, fst(arg2), someFunc(snd(arg2), get(v, fst(arg2)))) : put(v, fst(arg2), snd(arg2)))
+    r22 := (fst(arg1) in keys(r21) ? put(r21, fst(arg1), someFunc(snd(arg1), get(r21, fst(arg1)))) : put(r21, fst(arg1), snd(arg1)))
+
+    assert map_eq(r12, r22)
+  }
+}
+
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[Int], l: Ref, secret: Int, p: Perm) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, secret, p)]
+}
+
+function toSeq(s: Set[Int]) : Seq[Int]
+
+field lockMap : Ref
+
+method main(inputs: Seq[Seq[Int]], secret: Int)
+  requires lowEvent && low(inputs)
+  ensures true
+{
+  var m : Ref
+  m := createMap()
+  var l : Lock
+  l := newLock[MapLock](lockMap)
+  l.lockMap := m
+  share[MapLock](l, empty())
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|inputs|)
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, 1/(|inputs| + 1))
+    invariant lock[MapLock](l, (|inputs|+1-i)/(|inputs| + 1))
+    invariant guard[MapLock,AddValue](l)
+  {
+    var t: Thread
+    t := fork worker(inputs[i], l, secret, 1/(|inputs| + 1))
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, 1/(|inputs| + 1))
+    i := i + 1
+  }
+  
+  i := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, 1/(|inputs| + 1)) 
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
+    invariant lock[MapLock](l, (i+1)/(|inputs| + 1))
+  {
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, 1/(|inputs| + 1))
+    join[worker](loc(threads, i).arr_loc)
+    i := i + 1
+  }
+  acquire[MapLock](l)
+  print(l.lockMap)
+
+}
+
+
+method worker(inputs: Seq[Int], l: Lock, secret: Int, p: Perm)
+  requires lowEvent && low(inputs) && lock[MapLock](l, p) && guard[MapLock,AddValue](l) && p > none
+  ensures lock[MapLock](l, p)
+{
+  var i : Int := 0
+  while (i < |inputs|) 
+    invariant i >= 0 && i <= |inputs| && low(i) && lock[MapLock](l, p) && guard[MapLock,AddValue](l)
+  {
+    var k: Int
+    var v: Int
+    k, v := compute(inputs[i], secret)
+    acquire[MapLock](l)
+    var tmp : Map[Int, Int]
+    tmp := mapValue(l.lockMap)
+    var contained: Bool
+    var currentVal: Int
+    contained, currentVal := mapGet(l.lockMap, k)
+    if (!contained) {
+        mapPut(l.lockMap, k, v)
+    }else{
+        mapPut(l.lockMap, k, someFunc(v, currentVal))
+    }
+    release[MapLock](l, AddValue(pair(k, v)))
+    i := i + 1
+    
+  }
+}
+
+method compute(val: Int, secret: Int) returns (r1: Int, r2: Int)
+  ensures low(val) ==> low(r1) && low(r2)

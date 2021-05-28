@@ -16,7 +16,8 @@ lockType MapLock {
   
   action PutGreater(v, arg)
     requires low(arg)
-  { (fst(arg) in keys(v) && get(v, fst(arg)) < snd(arg) ? put(v, fst(arg), snd(arg)) : v) }
+  // put if not in there or greater
+  { (!(fst(arg) in keys(v)) || get(v, fst(arg)) < snd(arg) ? put(v, fst(arg), snd(arg)) : v) }
 
   proof commutativity[PutGreater, PutGreater](v, arg1, arg2) {
     var r1 : Map[Int, Int]
@@ -111,7 +112,7 @@ method worker(inputs: Seq[Int], l: Lock, secret: Int, p: Perm)
     var contained: Bool
     var currentVal: Int
     contained, currentVal := mapGet(l.lockMap, k)
-    if (contained && currentVal < v) {
+    if (!contained || currentVal < v) {
         mapPut(l.lockMap, k, v)
     }
     release[MapLock](l, PutGreater(pair(k, v)))

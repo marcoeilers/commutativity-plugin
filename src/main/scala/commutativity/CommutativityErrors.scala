@@ -26,7 +26,7 @@ case class ReorderingCheckFailed(a1: String, a2: String, offendingNode: ErrorNod
 case class PreservationCheckFailed(a1: String, offendingNode: ErrorNode, reason: ErrorReason,
                                     override val cached: Boolean = false) extends AbstractVerificationError {
   val id: String = "preservation.check.failed"
-  val text: String = "Security invariant preservation and postcondition check for action " + a1 + " failed."
+  val text: String = "Low abstraction preservation check for action " + a1 + " failed."
   override def withNode(offendingNode: ErrorNode = this.offendingNode): ErrorMessage =
     PreservationCheckFailed(a1, offendingNode, this.reason)
 
