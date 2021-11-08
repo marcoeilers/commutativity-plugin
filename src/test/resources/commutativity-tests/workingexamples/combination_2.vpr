@@ -1,0 +1,52 @@
+import "library/pair.vpr"
+
+domain SomeType {
+    function someAbstr(v: SomeType): SomeType
+    function someFunc(v: SomeType, i: Int): SomeType
+
+    axiom someFunc_preserves {
+      forall v1: SomeType, v2: SomeType, arg: Int :: { someFunc(v1, arg), someFunc(v2, arg) } someAbstr(v1) == someAbstr(v2) ==> someAbstr(someFunc(v1, arg)) == someAbstr(someFunc(v2, arg))
+    }
+
+    axiom someFunc_commutes {
+      forall v1: SomeType, v2: SomeType, arg1: Int, arg2: Int :: { someFunc(someFunc(v1, arg1), arg2), someFunc(someFunc(v2, arg2), arg1) }
+      someAbstr(v1) == someAbstr(v2) ==>
+      someAbstr(someFunc(someFunc(v1, arg1), arg2)) == someAbstr(someFunc(someFunc(v2, arg2), arg1))
+    }
+}
+
+domain OtherType {
+    function otherAbstr(v: OtherType): OtherType
+    function otherFunc(v: OtherType, i: Int): OtherType
+
+
+}
+
+predicate SomeStructure(r: Ref)
+
+predicate OtherStructure(r: Ref)
+
+function getSomeValue(r: Ref): SomeType
+  requires SomeStructure(r)
+
+function getOtherValue(r: Ref): OtherType
+  requires OtherStructure(r)
+
+field lockSome: Ref
+field lockOther: Ref
+
+lockType CombinedLock {
+  type Pair[SomeType, OtherType]
+  invariant(l, v) = [l.lockSome |-> ?sp && SomeStructure(sp) && [l.lockOther |-> ?op && OtherStructure(op) && v == pair(getSomeValue(sp), getOtherValue(op))]]
+  alpha(v): SomeType = someAbstr(fst(v))
+
+  actions = [(SomeAction, Int, duplicable),(OtherAction, Int, unique)]
+
+  action SomeAction(v, arg)
+    requires low(arg)
+  { pair(someFunc(fst(v), arg), snd(v)) }
+
+  action OtherAction(v, arg)
+      requires true
+    { pair(fst(v), otherFunc(snd(v), arg)) }
+}
