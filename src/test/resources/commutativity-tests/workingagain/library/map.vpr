@@ -1,0 +1,45 @@
+domain Map[T,V] {
+  function empty(): Map[T,V]
+  function keys(m: Map[T,V]): Set[T]
+  function get(m: Map[T,V], k: T) : V
+  function put(m: Map[T,V], k: T, v: V): Map[T,V]
+  function map_eq(m1: Map[T,V], m2: Map[T,V]) : Bool
+
+  axiom equality_def {
+    forall m1: Map[T,V], m2: Map[T,V] :: {map_eq(m1, m2)}
+        map_eq(m1, m2) == (keys(m1) == keys(m2) && forall k: T :: k in keys(m1) ==> get(m1, k) == get(m2, k))
+  }
+
+  axiom equality_extensional {
+    forall m1: Map[T,V], m2: Map[T,V] :: {map_eq(m1, m2)} map_eq(m1, m2) ==> m1 == m2
+  }
+
+  axiom empty_def {
+    keys(empty()) == Set[T]()
+  }
+
+  axiom put_keys {
+    forall m: Map[T,V], k: T, v: V :: {keys(put(m, k, v))} keys(put(m, k, v)) == keys(m) union Set(k)
+  }
+
+  axiom put_get {
+    forall m: Map[T,V], k1: T, k2: T, v: V :: {get(put(m, k1, v), k2)} get(put(m, k1, v), k2) == (k1 == k2 ? v : get(m, k2))
+  }
+}
+
+predicate isMap(r: Ref)
+
+function mapValue(r: Ref): Map[Int, Int]
+  requires acc(isMap(r), 1/100)
+
+method createMap() returns (r: Ref)
+  requires true
+  ensures isMap(r) && mapValue(r) == empty()
+
+method mapPut(r: Ref, k: Int, v: Int)
+  requires isMap(r)
+  ensures isMap(r) && mapValue(r) == put(old(mapValue(r)), k, v)
+
+method mapGet(r: Ref, k: Int) returns (contained: Bool, val: Int)
+  requires acc(isMap(r), 1/100)
+  ensures acc(isMap(r), 1/100) && contained == (k in keys(mapValue(r))) && (contained ==> val == get(mapValue(r), k))

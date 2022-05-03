@@ -1,0 +1,115 @@
+import "library/pair.vpr"
+import "library/map.vpr"
+import "library/array.vpr"
+
+domain SomeValue {}
+
+method print(i: Seq[Int])
+  requires lowEvent && low(i)
+
+method compute(val: SomeValue, secret: Int) returns (r1: Int, r2: Int)
+  ensures low(val) ==> low(r1)
+
+
+lockType MapLock {
+  type Map[Int, Int]
+  invariant(l, v) = [l.lockMap |-> ?mp && isMap(mp) && v == mapValue(mp)]
+  alpha(v): Set[Int] = keys(v)
+
+  actions = [(Put, Pair[Int, Int], duplicable)]
+  
+  action Put(v, arg)
+    requires low(fst(arg))
+  { (put(v, fst(arg), snd(arg))) }
+
+  noLabels = N()
+}
+
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[SomeValue], l: Ref, secret: Int, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, secret, lbl)]
+}
+
+function toSeq(s: Set[Int]) : Seq[Int]
+
+field lockMap : Ref
+
+function N(): Int
+    ensures result > 1
+
+
+method main(inputs: Seq[Seq[SomeValue]], secret: Int)
+  requires lowEvent && low(inputs)
+  requires |inputs| == N()
+  ensures true
+{
+  var m : Ref
+  m := createMap()
+  var l : Lock
+  l := new(lockMap)
+  l.lockMap := m
+  share[MapLock](l, empty())
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|inputs|)
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    //invariant lock[MapLock](l, (|inputs|+1-i)/(|inputs| + 1))
+    invariant sguard[MapLock,Put](l, intervalSet(i, N())) && sguardArgs[MapLock, Put](l, intervalSet(i, N())) == Multiset[Pair[Int, Int]]()
+  {
+    var t: Thread
+    assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
+    split[MapLock,Put](l, Set(i), intervalSet(i+1, N()), Multiset[Pair[Int, Int]](), Multiset[Pair[Int, Int]]())
+    t := fork worker(inputs[i], l, secret, i)
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    i := i + 1
+  }
+  
+  i := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
+    //invariant lock[MapLock](l, (i+1)/(|inputs| + 1))
+    invariant sguard[MapLock,Put](l, intervalSet(0, i)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, intervalSet(0, i)))
+  {
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    join[worker](loc(threads, i).arr_loc)
+    assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
+    merge[MapLock, Put](l, Set(i), intervalSet(0, i))
+    i := i + 1
+  }
+  unshare[MapLock](l)
+
+  var res: Seq[Int]
+  res := toSeq(keys(mapValue(l.lockMap)))
+  print(res)
+
+}
+
+
+method worker(inputs: Seq[SomeValue], l: Lock, secret: Int, lbl: Int)
+  requires lowEvent && low(inputs) && sguard[MapLock,Put](l, Set(lbl)) && sguardArgs[MapLock,Put](l, Set(lbl)) == Multiset[Pair[Int, Int]]()
+  ensures sguard[MapLock,Put](l, Set(lbl)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, Set(lbl)))
+{
+  var i : Int := 0
+  while (i < |inputs|) 
+    invariant i >= 0 && i <= |inputs| && low(i) && sguard[MapLock,Put](l, Set(lbl)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, Set(lbl)))
+  {
+    var k: Int
+    var v: Int
+    k, v := compute(inputs[i], secret)
+    //acquire[MapLock](l)
+    with[MapLock] l performing Put(pair(k, v)) at lbl {
+        var tmp : Map[Int, Int]
+        tmp := mapValue(l.lockMap)
+        mapPut(l.lockMap, k, v)
+        assert mapValue(l.lockMap) == put(tmp, k, v)
+    }
+
+    //release[MapLock](l, Put(pair(k, v)))
+    i := i + 1
+  }
+}

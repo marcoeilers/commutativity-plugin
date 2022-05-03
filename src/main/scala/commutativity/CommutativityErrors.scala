@@ -113,6 +113,14 @@ case class ShareFailed(offendingNode: Share, reason: ErrorReason, override val c
   def withReason(r: ErrorReason) = ShareFailed(offendingNode, r)
 }
 
+case class UnshareFailed(offendingNode: Unshare, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
+  val id = "unshare.failed"
+  val text = "Unshare might fail."
+
+  def withNode(offendingNode: ErrorNode = this.offendingNode) = UnshareFailed(offendingNode.asInstanceOf[Unshare], this.reason)
+  def withReason(r: ErrorReason) = UnshareFailed(offendingNode, r)
+}
+
 case class WaitFailed(offendingNode: Wait, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
   val id = "wait.failed"
   val text = "Wait might fail."

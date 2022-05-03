@@ -3,7 +3,7 @@ package commutativity
 import viper.silver.ast._
 import viper.silver.ast.pretty.PrettyPrintPrimitives
 import viper.silver.verifier.{ConsistencyError, VerificationResult}
-import viper.silver.ast.pretty.FastPrettyPrinter.{ContOps, parens, show, ssep, text}
+import viper.silver.ast.pretty.FastPrettyPrinter.{ContOps, parens, show, ssep, text, value}
 import viper.silver.sif.SIFLowExp
 
 
@@ -76,7 +76,7 @@ case class Proof(proofType: String, actions: Seq[String], params: Seq[LocalVarDe
   def subnodes = Seq(body) ++ params
 }
 
-case class LockSpec(name: String, t: Type, invariant: InvariantDef, alpha: AlphaDef, hist: Option[InvariantDef], actions: Seq[LockAction], proofs: Seq[Proof])(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionMember  {
+case class LockSpec(name: String, t: Type, invariant: InvariantDef, alpha: AlphaDef, hist: Option[InvariantDef], actions: Seq[LockAction], proofs: Seq[Proof], nlabels: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionMember  {
   override def extensionSubnodes: Seq[Node] = Seq(t) ++ invariant.subnodes ++ alpha.subnodes ++ (if (hist.isDefined) hist.get.subnodes else Seq()) ++ (actions map (_.subnodes)).flatten ++ (proofs map (_.subnodes)).flatten
   override lazy val checkTransitively: Seq[ConsistencyError] = Seq()
   val scopedDecls : Seq[Declaration] = Seq()
@@ -159,11 +159,43 @@ case class Seen(lockType: String, lockRef: Exp, value: Exp)(val pos: Position=No
   override def verifyExtExp(): VerificationResult = ???
 }
 
-case class Guard(lockType: String, guardName: String, lock: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionExp {
+case class SGuard(lockType: String, guardName: String, lock: Exp, lbls: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionExp {
+  val typ : Type = Bool
+  val extensionIsPure: Boolean = false
+  val extensionSubnodes : Seq[Node] = Seq(lock, lbls)
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("sguard[" + lockType + "," + guardName +  "]") <> parens(show(lock) <> text(", ") <> show(lbls))
+  override def verifyExtExp(): VerificationResult = ???
+}
+
+case class SGuardArgs(lockType: String, guardName: String, lock: Exp, lbls: Exp, resType: Type)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionExp {
+  val typ : Type = resType
+  val extensionIsPure: Boolean = true
+  val extensionSubnodes : Seq[Node] = Seq(lock, lbls, resType)
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("sguard[" + lockType + "," + guardName +  "]") <> parens(show(lock) <> text(", ") <> show(lbls))
+  override def verifyExtExp(): VerificationResult = ???
+}
+
+case class UGuard(lockType: String, guardName: String, lock: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionExp {
   val typ : Type = Bool
   val extensionIsPure: Boolean = false
   val extensionSubnodes : Seq[Node] = Seq(lock)
-  def prettyPrint : PrettyPrintPrimitives#Cont = text("guard[" + lockType + "," + guardName +  "]") <> parens(show(lock))
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("uguard[" + lockType + "," + guardName +  "]") <> parens(show(lock))
+  override def verifyExtExp(): VerificationResult = ???
+}
+
+case class UGuardArgs(lockType: String, guardName: String, lock: Exp, resType: Type)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionExp {
+  val typ : Type = resType
+  val extensionIsPure: Boolean = true
+  val extensionSubnodes : Seq[Node] = Seq(lock, resType)
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("uguard[" + lockType + "," + guardName +  "]") <> parens(show(lock))
+  override def verifyExtExp(): VerificationResult = ???
+}
+
+case class AllPre(lockType: String, guardName: String, args: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionExp {
+  val typ : Type = Bool
+  val extensionIsPure: Boolean = true
+  val extensionSubnodes : Seq[Node] = Seq(args)
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("allpre[" + lockType + "," + guardName +  "]") <> parens(show(args))
   override def verifyExtExp(): VerificationResult = ???
 }
 
@@ -194,9 +226,24 @@ case class Release(lockType: String, lockExp: Exp, action: Option[(String, Exp)]
   def prettyPrint : PrettyPrintPrimitives#Cont = text("release[" + lockType + "]") <> (if (action.isDefined) parens(show(lockExp) <> text(", ") <> text(action.get._1) <> parens(show(action.get._2))) else parens(show(lockExp)))
 }
 
+case class Unshare(lockType: String, lockExp: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionStmt {
+  val extensionSubnodes : Seq[Node] = Seq(lockExp)
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("unshare[" + lockType + "]") <> parens(show(lockExp))
+}
+
 case class Share(lockType: String, lockExp: Exp, lockVal: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionStmt {
   val extensionSubnodes : Seq[Node] = Seq(lockExp, lockVal)
   def prettyPrint : PrettyPrintPrimitives#Cont = text("share[" + lockType + "]") <>  parens(show(lockExp) <> text(", ") <> show(lockVal))
+}
+
+case class Merge(lockType: String, action: String, lockExp: Exp, lbls1: Exp, lbls2: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionStmt {
+  val extensionSubnodes : Seq[Node] = Seq(lockExp, lbls1, lbls2)
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("merge[" + lockType + "," + action + "]") <>  parens(show(lockExp) <> text(", ") <> show(lbls1)  <> text(", ") <> show(lbls2))
+}
+
+case class Split(lockType: String, action: String, lockExp: Exp, lbls1: Exp, lbls2: Exp, args1: Exp, args2: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionStmt {
+  val extensionSubnodes : Seq[Node] = Seq(lockExp, lbls1, lbls2, args1, args2)
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("split[" + lockType + "," + action + "]") <>  parens(show(lockExp) <> text(", ") <> show(lbls1)  <> text(", ") <> show(lbls2) <> text(", ") <> show(args1)  <> text(", ") <> show(args2))
 }
 
 case class Wait(barrierType: String, barrierExp: Exp, index: Exp, total: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionStmt {
@@ -207,6 +254,11 @@ case class Wait(barrierType: String, barrierExp: Exp, index: Exp, total: Exp)(va
 case class Acquire(lockType: String, lockExp: Exp)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionStmt {
   val extensionSubnodes : Seq[Node] = Seq(lockExp)
   def prettyPrint : PrettyPrintPrimitives#Cont = text("acquire[" + lockType + "]") <> parens(show(lockExp))
+}
+
+case class With(lockType: String, lockExp: Exp, whenExp: Option[Exp], actionName: String, actionArg: Exp, lbl: Option[Exp], body: Stmt)(val pos: Position=NoPosition, val info: Info=NoInfo, val errT: ErrorTrafo=NoTrafos) extends ExtensionStmt {
+  val extensionSubnodes : Seq[Node] = Seq(lockExp, actionArg, body) ++ whenExp.toIterator ++ lbl.toIterator
+  def prettyPrint : PrettyPrintPrimitives#Cont = text("with[" + lockType + "]") <> parens(show(lockExp))
 }
 
 case class Locktype() extends ExtensionType {
