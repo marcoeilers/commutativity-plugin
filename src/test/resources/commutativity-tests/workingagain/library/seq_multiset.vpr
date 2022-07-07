@@ -16,4 +16,8 @@ domain seq_abstraction[T] {
   axiom constr_single {
     forall v: T :: { seq_to_ms(Seq(v)) } seq_to_ms(Seq(v)) == Multiset(v)
   }
+
+  axiom constr_drop_last {
+    forall s1: Seq[T], _n: Int :: { seq_to_ms(s1[.._n]) } (|s1| > 0 && _n == |s1| - 1) ==> seq_to_ms(s1[.._n]) == seq_to_ms(s1) setminus Multiset(s1[_n])
+  }
 }

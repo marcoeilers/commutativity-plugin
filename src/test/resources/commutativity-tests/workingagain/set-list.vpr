@@ -1,0 +1,171 @@
+import "library/array.vpr"
+
+domain SomeValue {}
+
+method print(i: Set[Int])
+  requires lowEvent && low(i)
+
+method compute(vl: SomeValue, secret: Int) returns (r1: Int)
+  ensures low(vl) ==> low(r1)
+
+
+lockType SetLock {
+  type Set[Int]
+  invariant(l, v) = [l.lockSet |-> ?sp && slist(sp) && v == slistContents(sp)]
+  alpha(v): Set[Int] = v
+
+    actions = [(Add, Int, duplicable)]
+
+      action Add(v, arg)
+        requires low(arg)
+      { v union Set(arg) }
+
+  noLabels = N()
+}
+
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[SomeValue], l: Ref, secret: Int, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, secret, lbl)]
+}
+
+
+field lockSet : Ref
+
+function N(): Int
+    ensures result > 1
+
+
+method main(inputs: Seq[Seq[SomeValue]], secret: Int)
+  requires lowEvent && low(inputs)
+  requires |inputs| == N()
+  ensures true
+{
+  var s : Ref
+  s := newListSet()
+  var l : Lock
+  l := new(lockSet)
+  l.lockSet := s
+  share[SetLock](l, Set[Int]())
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|inputs|)
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant sguard[SetLock,Add](l, intervalSet(i, N())) && sguardArgs[SetLock, Add](l, intervalSet(i, N())) == Multiset[Int]()
+  {
+    var t: Thread
+    assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
+    split[SetLock,Add](l, Set(i), intervalSet(i+1, N()), Multiset[Int](), Multiset[Int]())
+    t := fork worker(inputs[i], l, secret, i)
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    i := i + 1
+  }
+  
+  i := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
+    invariant sguard[SetLock,Add](l, intervalSet(0, i)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, intervalSet(0, i)))
+  {
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    join[worker](loc(threads, i).arr_loc)
+    assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
+    merge[SetLock, Add](l, Set(i), intervalSet(0, i))
+    i := i + 1
+  }
+  unshare[SetLock](l)
+
+
+  print(slistContents(l.lockSet))
+
+}
+
+
+method worker(inputs: Seq[SomeValue], l: Lock, secret: Int, lbl: Int)
+  requires lowEvent && low(inputs) && sguard[SetLock,Add](l, Set(lbl)) && sguardArgs[SetLock,Add](l, Set(lbl)) == Multiset[Int]()
+  ensures sguard[SetLock,Add](l, Set(lbl)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, Set(lbl)))
+{
+  var i : Int := 0
+  while (i < |inputs|) 
+    invariant i >= 0 && i <= |inputs| && low(i) && sguard[SetLock,Add](l, Set(lbl)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, Set(lbl)))
+  {
+    var v: Int
+    v := compute(inputs[i], secret)
+    with[SetLock] l performing Add(v) at lbl {
+        ListSet_addElement(l.lockSet, v)
+    }
+
+    i := i + 1
+  }
+}
+
+
+// set implementation with sorted list
+
+field next: Ref
+field val: Int
+
+predicate slist(r: Ref) {
+    (acc(r.next) && acc(r.val)) &&
+    (r.next != null ==>
+    (
+      slist(r.next) &&
+      forall v: Int :: v in slistContents(r.next) ==> r.val < v
+    ))
+}
+
+function slistContents(r: Ref): Set[Int]
+  requires slist(r)
+{
+  unfolding slist(r) in r.next == null ? Set[Int]() : Set(r.val) union slistContents(r.next)
+}
+
+method newListSet() returns (r: Ref)
+  ensures slist(r)
+  ensures slistContents(r) == Set[Int]()
+{
+  r := new(next, val)
+  r.next := null
+  fold slist(r)
+}
+
+method ListSet_addElement(r: Ref, i: Int)
+  requires slist(r)
+  ensures slist(r)
+  ensures slistContents(r) == old(slistContents(r)) union Set(i)
+{
+  unfold slist(r)
+  var tmp: Ref
+  if (r.next == null){
+    tmp := new(next, val)
+    tmp.next := null
+    r.next := tmp
+    r.val := i
+    fold slist(tmp)
+  }else{
+    if (r.val == i) {
+      // nothing to do
+    } else {
+      if (r.val < i) {
+          ListSet_addElement(r.next, i)
+      }else{
+          label wtf
+          assert forall j: Int :: j in slistContents(r.next) ==> i<j
+          tmp := new(next, val)
+          tmp.next := r.next
+          tmp.val := r.val
+          assert i < tmp.val
+          fold slist(tmp)
+          assert slistContents(tmp) == old[wtf](slistContents(r.next)) union Set(old[wtf](r.val))
+          assert slistContents(tmp) == old(slistContents(r))
+          assert forall j: Int :: j in slistContents(tmp) ==> i < j
+          r.next := tmp
+          r.val := i
+      }
+    }
+  }
+  fold slist(r)
+}

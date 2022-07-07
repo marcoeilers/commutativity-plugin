@@ -860,7 +860,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
 
         // assume low(alpha(v))
         val assumeSecInv = Inhale(lockSpec.alpha.lowWithArg(invValDummyDecl.localVar))(u.pos, errT=errTrafo)
-        Seqn(guardAsserts ++ guardAllPreAsserts ++ guardExhales ++ Seq(assertLowEvent, inhaleInv, assumeSecInv), Seq(invValDummyDecl))()
+        Seqn(guardAsserts ++  Seq(assertLowEvent, inhaleInv) ++ guardAllPreAsserts ++ guardExhales ++ Seq(assumeSecInv), Seq(invValDummyDecl))()
       }
       case w@With(lt, lockExp, whenExp, actionName, arg, lbl, bod) => {
         val lockSpec = lockSpecs.get(lt).get

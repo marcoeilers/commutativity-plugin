@@ -1,0 +1,256 @@
+import "library/array.vpr"
+
+domain SomeValue {}
+
+method print(i: Set[Int])
+  requires lowEvent && low(i)
+
+method compute(vl: SomeValue, secret: Int) returns (r1: Int)
+  ensures low(vl) ==> low(r1)
+
+
+lockType SetLock {
+  type Set[Int]
+  invariant(l, v) = [l.lockSet |-> ?sp && fullstree(sp) && v == fullstreeContents(sp)]
+  alpha(v): Set[Int] = v
+
+    actions = [(Add, Int, duplicable)]
+
+      action Add(v, arg)
+        requires low(arg)
+      { v union Set(arg) }
+
+  noLabels = N()
+}
+
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[SomeValue], l: Ref, secret: Int, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, secret, lbl)]
+}
+
+
+field lockSet : Ref
+
+function N(): Int
+    ensures result > 1
+
+
+method main(inputs: Seq[Seq[SomeValue]], secret: Int)
+  requires lowEvent && low(inputs)
+  requires |inputs| == N()
+  ensures true
+{
+  var s : Ref
+  s := newTreeSet()
+  var l : Lock
+  l := new(lockSet)
+  l.lockSet := s
+  share[SetLock](l, Set[Int]())
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|inputs|)
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant sguard[SetLock,Add](l, intervalSet(i, N())) && sguardArgs[SetLock, Add](l, intervalSet(i, N())) == Multiset[Int]()
+  {
+    var t: Thread
+    assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
+    split[SetLock,Add](l, Set(i), intervalSet(i+1, N()), Multiset[Int](), Multiset[Int]())
+    t := fork worker(inputs[i], l, secret, i)
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    i := i + 1
+  }
+  
+  i := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
+    invariant sguard[SetLock,Add](l, intervalSet(0, i)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, intervalSet(0, i)))
+  {
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    join[worker](loc(threads, i).arr_loc)
+    assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
+    merge[SetLock, Add](l, Set(i), intervalSet(0, i))
+    i := i + 1
+  }
+  unshare[SetLock](l)
+
+
+  print(fullstreeContents(l.lockSet))
+
+}
+
+
+method worker(inputs: Seq[SomeValue], l: Lock, secret: Int, lbl: Int)
+  requires lowEvent && low(inputs) && sguard[SetLock,Add](l, Set(lbl)) && sguardArgs[SetLock,Add](l, Set(lbl)) == Multiset[Int]()
+  ensures sguard[SetLock,Add](l, Set(lbl)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, Set(lbl)))
+{
+  var i : Int := 0
+  while (i < |inputs|) 
+    invariant i >= 0 && i <= |inputs| && low(i) && sguard[SetLock,Add](l, Set(lbl)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, Set(lbl)))
+  {
+    var v: Int
+    v := compute(inputs[i], secret)
+    with[SetLock] l performing Add(v) at lbl {
+        TreeSet_AddElement(l.lockSet, v)
+    }
+
+    i := i + 1
+  }
+}
+
+
+// set implementation with sorted list
+field left: Ref
+field right: Ref
+field data: Int
+field root: Ref
+
+predicate stree(this: Ref) {
+    this != null ==>
+    acc(this.left) && acc(this.right) && acc(this.data) &&
+    stree(this.left) &&
+    stree(this.right)
+}
+
+function streeContents(this: Ref) : Set[Int]
+  requires stree(this)
+{
+  this == null ? Set[Int]() : unfolding stree(this) in (Set(this.data) union streeContents(this.left) union streeContents(this.right))
+}
+
+define max(x, y) (x > y ? x : y)
+define min(x, y) (x < y ? x : y)
+
+
+function streeMax(this: Ref) : Int
+  requires stree(this) && this != null
+{
+  unfolding stree(this) in this.left == null ?
+  (this.right == null ? (this.data) : (max(this.data, streeMax(this.right)))) :
+  (this.right == null ? (max(this.data, streeMax(this.left))) : (max(this.data, max(streeMax(this.left), streeMax(this.right)))))
+}
+
+function streeMin(this: Ref) : Int
+  requires stree(this) && this != null
+{
+  unfolding stree(this) in this.left == null ?
+  (this.right == null ? (this.data) : (min(this.data, streeMin(this.right)))) :
+  (this.right == null ? (min(this.data, streeMin(this.left))) : (min(this.data, min(streeMin(this.left), streeMin(this.left)))))
+}
+
+function isBst(this: Ref): Bool
+  requires stree(this)
+{
+  this == null ||
+  (unfolding stree(this) in
+  isBst(this.left) && isBst(this.right) &&
+  (this.left != null ==> this.data > streeMax(this.left)) &&
+  (this.right != null ==> this.data < streeMin(this.right)))
+}
+
+method TreeSet_AddElement(this: Ref, i: Int)
+  requires fullstree(this)
+  ensures fullstree(this)
+  ensures fullstreeContents(this) == old(fullstreeContents(this)) union Set(i)
+{
+  unfold fullstree(this)
+  if (this.root == null) {
+    var tmp: Ref
+    tmp := new(left, right, data)
+    tmp.left := null
+    tmp.right := null
+    tmp.data := i
+    fold stree(tmp.right)
+    fold stree(tmp.left)
+    fold stree(tmp)
+    this.root := tmp
+  }else{
+    TreeSet_AddElement_rec(this.root, i)
+  }
+  fold fullstree(this)
+}
+
+method TreeSet_AddElement_rec(this: Ref, i: Int)
+  requires stree(this) && isBst(this) && this != null
+  ensures stree(this) && isBst(this)
+  ensures streeContents(this) == old(streeContents(this)) union Set(i)
+  ensures streeMax(this) == max(old(streeMax(this)), i)
+  ensures streeMin(this) == min(old(streeMin(this)), i)
+{
+  unfold stree(this)
+  label wtf
+  var n: Ref
+  n := new(*)
+  n.data := i
+  n.left := null
+  fold stree(n.left)
+  assert isBst(n.left)
+  assert streeContents(n.left) == Set[Int]()
+
+  n.right := null
+  fold stree(n.right)
+  assert isBst(n.right)
+  assert streeContents(n.right) == Set[Int]()
+  fold stree(n)
+  assert streeMax(n) == i
+  assert streeMin(n) == i
+  assert streeContents(n) == Set(i)
+  assert isBst(n)
+  if (this.left == null) {
+    if (this.right == null) {
+      if (i < this.data) {
+        this.left := n
+        assert streeContents(n) == Set(i)
+        assert Set(this.data) union streeContents(this.left) union streeContents(this.right) == old(streeContents(this)) union Set(i)
+      } elseif (i > this.data) {
+        this.right := n
+        assert Set(this.data) union streeContents(this.left) union streeContents(this.right) == old(streeContents(this)) union Set(i)
+      }
+    } else {
+      if (i < this.data) {
+        this.left := n
+        assert old[wtf](streeContents(this.left)) == Set[Int]()
+      } elseif (i > this.data) {
+        TreeSet_AddElement_rec(this.right, i)
+      }
+    }
+  } elseif (this.right == null) {
+    if (i < this.data) {
+      TreeSet_AddElement_rec(this.left, i)
+    } elseif (i > this.data) {
+      this.right := n
+      assert old[wtf](streeContents(this.right)) == Set[Int]()
+    }
+  } else {
+    if (i < this.data) {
+      TreeSet_AddElement_rec(this.left, i)
+    } elseif (i > this.data) {
+      TreeSet_AddElement_rec(this.right, i)
+    }
+  }
+
+  fold stree(this)
+}
+
+function fullstreeContents(this: Ref) : Set[Int]
+  requires fullstree(this)
+{
+  unfolding fullstree(this) in streeContents(this.root)
+}
+
+method newTreeSet() returns (r: Ref)
+  ensures fullstree(r) && fullstreeContents(r) == Set[Int]()
+{
+  r := new(root)
+  r.root := null
+  fold stree(r.root)
+  fold fullstree(r)
+}
+
+predicate fullstree(this: Ref) {
+  acc(this.root) && stree(this.root) && isBst(this.root)
+}
