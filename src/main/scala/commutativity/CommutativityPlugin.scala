@@ -2,7 +2,7 @@ package commutativity
 
 import viper.silver.ast.utility.{Expressions, QuantifiedPermissions}
 import viper.silver.ast.utility.rewriter.Traverse
-import viper.silver.ast.{Add, And, AnySetCardinality, AnySetContains, AnySetIntersection, AnySetUnion, Assert, Bool, CondExp, CurrentPerm, Domain, DomainAxiom, DomainFunc, DomainFuncApp, EmptyMultiset, EmptySeq, EmptySet, EqCmp, ErrTrafo, Exhale, Exp, ExplicitMultiset, ExplicitSeq, ExplicitSet, FieldAccess, FieldAccessPredicate, Forall, FullPerm, FuncApp, Function, GeCmp, GtCmp, Implies, Inhale, IntLit, Label, LeCmp, Let, LocalVar, LocalVarAssign, LocalVarDecl, LtCmp, Method, MethodCall, Minus, MultisetType, NoInfo, NoPerm, NoTrafos, Node, NodeTrafo, Perm, PermGeCmp, PermGtCmp, Position, Predicate, PredicateAccess, PredicateAccessPredicate, Program, Ref, Result, SeqAppend, SeqType, Seqn, SetType, Stmt, Sub, Trafos, Trigger, TrueLit, Type, TypeVar, While, WildcardPerm}
+import viper.silver.ast.{Add, And, AnySetCardinality, AnySetContains, AnySetIntersection, AnySetUnion, Assert, Bool, CondExp, CurrentPerm, Domain, DomainAxiom, DomainFunc, DomainFuncApp, EmptyMultiset, EmptySeq, EmptySet, EqCmp, ErrTrafo, Exhale, Exp, ExplicitMultiset, ExplicitSeq, ExplicitSet, FieldAccess, FieldAccessPredicate, Forall, FullPerm, FuncApp, Function, GeCmp, GtCmp, Implies, Inhale, IntLit, Label, LeCmp, Let, LocalVar, LocalVarAssign, LocalVarDecl, LtCmp, Method, MethodCall, Minus, MultisetType, NoInfo, NoPerm, NoTrafos, Node, NodeTrafo, Perm, PermGeCmp, PermGtCmp, Position, Predicate, PredicateAccess, PredicateAccessPredicate, Program, Ref, Result, SeqAppend, SeqIndex, SeqLength, SeqType, Seqn, SetType, Stmt, Sub, Trafos, Trigger, TrueLit, Type, TypeVar, While, WildcardPerm}
 import viper.silver.parser.FastParser._
 import viper.silver.parser._
 import viper.silver.plugin.{ParserPluginTemplate, SilverPlugin}
@@ -1116,8 +1116,8 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
 
   override def mapVerificationResult(input: VerificationResult): VerificationResult = {
     input match {
-      //case Failure(errors) =>  Failure(errors)// Failure(errors)Failure(errors.map(e => if (e.isInstanceOf[AbstractVerificationError]) e.asInstanceOf[AbstractVerificationError].transformedError() else e))
-      case Failure(errors) =>  Failure(errors.map(e => if (e.isInstanceOf[AbstractVerificationError]) e.asInstanceOf[AbstractVerificationError].transformedError() else e))
+      case Failure(errors) =>  Failure(errors)// Failure(errors)Failure(errors.map(e => if (e.isInstanceOf[AbstractVerificationError]) e.asInstanceOf[AbstractVerificationError].transformedError() else e))
+      //case Failure(errors) =>  Failure(errors.map(e => if (e.isInstanceOf[AbstractVerificationError]) e.asInstanceOf[AbstractVerificationError].transformedError() else e))
       case Success => input
     }
   }
@@ -1197,8 +1197,41 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
             allAxioms.append(unAxiom)
           }
         }else{
-          // allpre(s, s') == |s| == |s'| && forall i: pre(s[i], s'[i])
-          // TODO
+          if (a.pre == TrueLit()()){
+            val trueBod = EqCmp(parFapp, EqCmp(SeqLength(fstPar.localVar)(), SeqLength(sndPar.localVar)())())()
+            val trueTrigger = Trigger(Seq(parFapp))()
+            val trueQuant = Forall(Seq(fstPar, sndPar), Seq(trueTrigger), trueBod)()
+            val trueAxiom = DomainAxiom("allpre$true$" + lockSpec.name + "$" + a.name, trueQuant)(domainName=domainName)
+            allAxioms.append(trueAxiom)
+            // TODO: else if a.pre is unary
+          }else{
+            // allpre(s +(x), s' + [x']) <== allpre(s, s') && pre(x, x')
+            val fstUnion = SeqAppend(fstPar.localVar, ExplicitSeq(Seq(fstVal.localVar))())()
+            val sndUnion = SeqAppend(sndPar.localVar, ExplicitSeq(Seq(sndVal.localVar))())()
+            val unionFapp = DomainFuncApp(func, Seq(fstUnion, sndUnion), emptyMap)()
+            val unionTrigger = Trigger(Seq(unionFapp))()
+            val unionQuantBod = Implies(And(parFapp, preApplied)(), unionFapp)()
+            val unionQuant = Forall(Seq(fstPar, sndPar, fstVal, sndVal), Seq(unionTrigger), unionQuantBod)()
+            val unionAxiom = DomainAxiom("allpre$append$" + lockSpec.name + "$" + a.name, unionQuant)(domainName=domainName)
+            allAxioms.append(unionAxiom)
+            // allpre(s, s') == |s| == |s'| && forall i: {s[i], s'[i]} i>= 0 && i < |s| ==<  pre(s[i], s'[i])
+            val genFapp = DomainFuncApp(func, Seq(fstPar.localVar, sndPar.localVar), emptyMap)()
+            val genLenEq = EqCmp(SeqLength(fstPar.localVar)(), SeqLength(sndPar.localVar)())()
+            val genInnerVar = LocalVarDecl("_i", viper.silver.ast.Int)()
+            val genFirstIndex = SeqIndex(fstPar.localVar, genInnerVar.localVar)()
+            val genSecondIndex = SeqIndex(sndPar.localVar, genInnerVar.localVar)()
+            val genIndexInBounds = And(GeCmp(genInnerVar.localVar, IntLit(0)())(), LtCmp(genInnerVar.localVar, SeqLength(fstPar.localVar)())())()
+            val genPreApplied = preApplied.replace(fstVal.localVar, genFirstIndex).replace(sndVal.localVar, genSecondIndex)
+            val genInnerTrigger = Trigger(Seq(genFirstIndex, genSecondIndex))()
+            val genInnerForall = Forall(Seq(genInnerVar), Seq(genInnerTrigger), Implies(genIndexInBounds, genPreApplied)())()
+            val genBody = And(genLenEq, genInnerForall)()
+            val genTrigger = Trigger(Seq(genFapp))()
+            val genQuant = Forall(Seq(fstPar, sndPar), Seq(genTrigger), EqCmp(genFapp, genBody)())()
+            val genAxiom = DomainAxiom("allpre$seqindex$"+ lockSpec.name + "$" + a.name, genQuant)(domainName=domainName)
+            allAxioms.append(genAxiom)
+          }
+
+
         }
       })
     }

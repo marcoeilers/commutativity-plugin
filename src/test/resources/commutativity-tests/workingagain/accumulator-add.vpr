@@ -1,0 +1,107 @@
+import "library/pair.vpr"
+import "library/map.vpr"
+import "library/array.vpr"
+
+domain SomeValue {}
+
+method print(i: Int)
+  requires lowEvent && low(i)
+
+method compute(vl: SomeValue, secret: Int) returns (r1: Int)
+  ensures low(vl) ==> low(r1)
+
+
+lockType CounterLock {
+  type Int
+  invariant(l, v) = [l.lockCounter |-> ?cp && [cp.val |-> v]]
+  alpha(v): Int = v
+
+    actions = [(Add, Int, duplicable)]
+
+      action Add(v, arg)
+        requires low(arg)
+      { v + arg }
+
+  noLabels = N()
+}
+
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[SomeValue], l: Ref, secret: Int, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, secret, lbl)]
+}
+
+
+field lockCounter : Ref
+field val: Int
+
+function N(): Int
+    ensures result > 1
+
+
+method main(inputs: Seq[Seq[SomeValue]], secret: Int)
+  requires lowEvent && low(inputs)
+  requires |inputs| == N()
+  ensures true
+{
+  var ctr : Ref
+  ctr := new(val)
+  ctr.val := 0
+  var l : Lock
+  l := new(lockCounter)
+  l.lockCounter := ctr
+  share[CounterLock](l, 0)
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|inputs|)
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant sguard[CounterLock,Add](l, intervalSet(i, N())) && sguardArgs[CounterLock, Add](l, intervalSet(i, N())) == Multiset[Int]()
+  {
+    var t: Thread
+    assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
+    split[CounterLock,Add](l, Set(i), intervalSet(i+1, N()), Multiset[Int](), Multiset[Int]())
+    t := fork worker(inputs[i], l, secret, i)
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    i := i + 1
+  }
+  
+  i := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
+    invariant sguard[CounterLock,Add](l, intervalSet(0, i)) && allPre[CounterLock, Add](sguardArgs[CounterLock,Add](l, intervalSet(0, i)))
+  {
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    join[worker](loc(threads, i).arr_loc)
+    assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
+    merge[CounterLock, Add](l, Set(i), intervalSet(0, i))
+    i := i + 1
+  }
+  unshare[CounterLock](l)
+
+
+  print(l.lockCounter.val)
+
+}
+
+
+method worker(inputs: Seq[SomeValue], l: Lock, secret: Int, lbl: Int)
+  requires lowEvent && low(inputs) && sguard[CounterLock,Add](l, Set(lbl)) && sguardArgs[CounterLock,Add](l, Set(lbl)) == Multiset[Int]()
+  ensures sguard[CounterLock,Add](l, Set(lbl)) && allPre[CounterLock, Add](sguardArgs[CounterLock,Add](l, Set(lbl)))
+{
+  var i : Int := 0
+  while (i < |inputs|) 
+    invariant i >= 0 && i <= |inputs| && low(i) && sguard[CounterLock,Add](l, Set(lbl)) && allPre[CounterLock, Add](sguardArgs[CounterLock,Add](l, Set(lbl)))
+  {
+    var v: Int
+    v := compute(inputs[i], secret)
+    with[CounterLock] l performing Add(v) at lbl {
+        l.lockCounter.val := l.lockCounter.val + v
+    }
+
+    i := i + 1
+  }
+}

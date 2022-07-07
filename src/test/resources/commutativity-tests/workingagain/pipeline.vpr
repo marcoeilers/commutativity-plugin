@@ -1,0 +1,193 @@
+import "library/pair.vpr"
+import "library/unit.vpr"
+import "library/either.vpr"
+import "library/nat.vpr"
+import "library/list.vpr"
+
+
+
+lockType Channel {
+  type Pair[Seq[Int], Either[Nat, Seq[Int]]]
+  invariant(l, v) = [l.queue |-> ?lp && list(lp) && [l.history |-[1/2]-> ?hi && v == pair(hi, right(listValue(lp))) ]]
+  alpha(v): Pair[Seq[Int], Either[Nat, Seq[Int]]] = v
+
+  actions = [(Prod, Int, unique), (Cons, Unit, unique)]
+
+  action Prod(pv, arg)
+    requires low(arg)
+  { (let v == (snd(pv)) in
+    (is_right(v) ?
+      ( pair(fst(pv), (right(Seq(arg) ++ right_val(v)): Either[Nat, Seq[Int]]))) :
+      (nat_val(left_val(v)) > 0 ?
+        (pair(fst(pv) ++ Seq(arg),   ( left(nat(nat_val(left_val(v)) - 1)): Either[Nat, Seq[Int]]))) :
+        (pair(fst(pv) ++ Seq(arg),   ( right(Seq[Int]()): Either[Nat, Seq[Int]])))))
+    )}
+
+  action Cons(pv, arg)
+    requires true
+  {
+    ( let v == (snd(pv)) in
+    (is_right(v) ?
+      (|right_val(v)| > 0 ?
+        (pair(fst(pv) ++ Seq(right_val(v)[|right_val(v)|-1]), (right(right_val(v)[..|right_val(v)|-1]): Either[Nat, Seq[Int]]))) :
+        pair(fst(pv), (left(nat(0)): Either[Nat, Seq[Int]])) ) :
+      pair(fst(pv), (left(nat(nat_val(left_val(v)) + 1)): Either[Nat, Seq[Int]])))
+    )
+  }
+
+  proof commutativity[Prod, Cons](pv, arg1, arg2) {
+    var v: Either[Nat, Seq[Int]]
+    v := snd(pv)
+    if (is_right(v) && |right_val(v)| > 0) {
+      assert (Seq(arg1) ++ right_val(v))[..|(Seq(arg1) ++ right_val(v))|-1] == (Seq(arg1) ++ (right_val(v)[..|right_val(v)|-1]))
+    }
+  }
+
+  noLabels = 1
+}
+
+method enqueue(l: Ref, i: Int)
+  requires list(l)
+  ensures list(l) && listValue(l) == Seq(i) ++ old(listValue(l))
+
+method dequeue(l: Ref) returns (r: Int)
+  requires list(l) && |listValue(l)| > 0
+  ensures list(l) && listValue(l) == old(listValue(l)[..|listValue(l)|-1]) 
+  ensures r == old(listValue(l)[|listValue(l)|-1])
+
+field queue: Ref
+field history: Seq[Int]
+
+
+method main(inputs: Seq[Int], secret: Int)
+  requires lowEvent && low(inputs)
+  ensures true
+{
+  
+  var l1 : Lock
+  l1 := new(queue, history)
+  var lst1: Ref
+  lst1 := createList()
+  l1.queue := lst1
+  l1.history := Seq[Int]()
+  var l2 : Lock
+    l2 := new(queue, history)
+    var lst2: Ref
+    lst2 := createList()
+    l2.queue := lst2
+    l2.history := Seq[Int]()
+  share[Channel](l1, (let es == (Seq[Int]()) in (pair(es,  (right(es) : Either[Nat, Seq[Int]]) ))) )
+  share[Channel](l2, (let es == (Seq[Int]()) in (pair(es,  (right(es) : Either[Nat, Seq[Int]]) ))) )
+  var cons : Thread
+  var prod : Thread
+  var mdl: Thread
+  prod := fork producer(inputs, l1, secret)
+  mdl := fork middle(l1, l2, |inputs|, secret)
+  cons := fork consumer(l2, |inputs|, secret)
+  join[producer](prod)
+  join[middle](mdl)
+  var res: Int
+  res := join[consumer](cons)
+  unshare[Channel](l1)
+  unshare[Channel](l2)
+  print(res)
+}
+
+
+
+method middle(l1: Lock, l2: Lock, n: Int, secret: Int)
+    requires lowEvent && n >= 0 && low(n)
+    requires uguard[Channel,Cons](l1) && uguardArgs[Channel,Cons](l1) == Seq[Unit]() && [l1.history |-[1/2]-> ?hi && |hi| == 0]
+    requires uguard[Channel,Prod](l2) && uguardArgs[Channel,Prod](l2) == Seq[Int]()
+    ensures uguard[Channel,Prod](l2)
+    ensures uguard[Channel,Cons](l1) && allPre[Channel, Cons](uguardArgs[Channel,Cons](l1)) && [l1.history |-[1/2]-> ?hi && |uguardArgs[Channel,Prod](l2)| == |hi| && forall _j: Int :: _j >= 0 && _j < |hi| ==> compute3(hi[_j]) == uguardArgs[Channel,Prod](l2)[_j]]
+{
+    var i : Int := 0
+      while (i < n)
+        invariant i >= 0 && i <= n && low(i) && uguard[Channel,Cons](l1) &&  allPre[Channel, Cons](uguardArgs[Channel,Cons](l1))
+        invariant uguard[Channel,Prod](l2)
+        invariant [l1.history |-[1/2]-> ?hi && |uguardArgs[Channel,Prod](l2)| == |hi| && forall _j: Int :: _j >= 0 && _j < |hi| ==> compute3(hi[_j]) == uguardArgs[Channel,Prod](l2)[_j]]
+      {
+        var recVal: Int
+        var prodVal: Int
+        var ohist : Seq[Int]
+        var listlen: Int
+        with[Channel] l1 performing Cons(unit()) {
+            listlen := listLength(l1.queue)
+            assume listlen > 0 // TODO: with when
+
+            ohist := l1.history
+            assert true
+            recVal := dequeue(l1.queue)
+            l1.history := l1.history ++ Seq(recVal)
+        }
+        prodVal := compute3(recVal)
+        with[Channel] l2 performing Prod(prodVal) {
+            enqueue(l2.queue, prodVal)
+        }
+        i := i + 1
+      }
+}
+
+method producer(inputs: Seq[Int], l: Lock, secret: Int)
+  requires lowEvent && low(inputs) && uguard[Channel,Prod](l) && uguardArgs[Channel,Prod](l) == Seq[Int]()
+  ensures uguard[Channel,Prod](l) && allPre[Channel, Prod](uguardArgs[Channel,Prod](l))
+{
+  var i : Int := 0
+  while (i < |inputs|) 
+    invariant i >= 0 && i <= |inputs| && low(i) && uguard[Channel,Prod](l) && allPre[Channel, Prod](uguardArgs[Channel,Prod](l))
+  {
+    var newVal: Int
+    newVal  := compute1(inputs[i], secret)
+
+    with[Channel] l performing Prod(newVal) {
+        enqueue(l.queue, newVal)
+    }
+    i := i + 1
+  }
+}
+
+
+method consumer(l: Lock, n: Int, secret: Int) returns (res: Int)
+  requires lowEvent && n >= 0 && low(n) && uguard[Channel,Cons](l) && uguardArgs[Channel,Cons](l) == Seq[Unit]() && [l.history |-[1/2]-> ?hi && |hi| == 0]
+  ensures uguard[Channel,Cons](l) &&  allPre[Channel, Cons](uguardArgs[Channel,Cons](l)) && [l.history |-[1/2]-> ?hi && res == aggregate(hi)]
+{
+  var i : Int := 0
+  res := INITIAL()
+  while (i < n)
+    invariant i >= 0 && i <= n && low(i) && uguard[Channel,Cons](l) &&  allPre[Channel, Cons](uguardArgs[Channel,Cons](l))
+    invariant [l.history |-[1/2]-> ?hi && res == aggregate(hi)]
+  {
+    var recVal: Int
+    var ohist : Seq[Int]
+    var listlen: Int
+    with[Channel] l performing Cons(unit()) {
+        listlen := listLength(l.queue)
+        assume listlen > 0 // TODO: with when
+
+        ohist := l.history
+        assert true
+        recVal := dequeue(l.queue)
+        l.history := l.history ++ Seq(recVal)
+    }
+    res := compute2(res, recVal, secret, ohist)
+    i := i + 1
+  }
+}
+
+
+method compute1(val: Int, secret: Int) returns (r1: Int)
+  ensures low(val) ==> low(r1)
+
+function INITIAL(): Int
+
+function aggregate(s: Seq[Int]): Int
+    ensures |s| == 0 ==> result == INITIAL()
+
+function compute3(i: Int): Int
+
+method compute2(sum: Int, val: Int, secret: Int, ghost_s: Seq[Int]) returns (r: Int)
+  requires sum == aggregate(ghost_s)
+  ensures r == aggregate(ghost_s ++ Seq(val))
+method print(i: Int)
+  requires lowEvent && low(i)

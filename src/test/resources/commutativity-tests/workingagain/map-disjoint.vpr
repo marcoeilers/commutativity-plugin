@@ -1,0 +1,116 @@
+import "library/pair.vpr"
+import "library/map.vpr"
+import "library/array.vpr"
+
+domain SomeData {
+    function key_split(i: Int): Bool
+
+    function key(val: SomeData) : Int
+}
+
+method print(i: Seq[Int])
+  requires lowEvent && low(i)
+
+
+
+method compute(val: SomeData, secret: Int) returns (r1: Int, r2: Int)
+  ensures low(val) ==> low(r1) && low(r2)
+  ensures r1 == key(val)
+
+
+lockType MapLock {
+  type MyMap[Int, Int]
+  invariant(l, v) = [l.lockMap |-> ?mp && isMap(mp) && v == mapValue(mp)]
+  alpha(v): MyMap[Int, Int] = v
+
+  actions = [(Put1, Pair[Int, Int], unique),(Put2, Pair[Int, Int], unique)]
+
+  action Put1(v, arg)
+    requires low(arg) && key_split(fst(arg))
+  { (put(v, fst(arg), snd(arg))) }
+
+  action Put2(v, arg)
+      requires low(arg) && !key_split(fst(arg))
+    { (put(v, fst(arg), snd(arg))) }
+
+  proof commutativity[Put1, Put2](v, arg1, arg2) {
+    var r1 : MyMap[Int, Int] := put(put(v, fst(arg1), snd(arg1)), fst(arg2), snd(arg2))
+    var r2 : MyMap[Int, Int] := put(put(v, fst(arg2), snd(arg2)), fst(arg1), snd(arg1))
+    assert map_eq(r1, r2)
+  }
+
+  noLabels = 1
+}
+
+function toSeq(s: Set[Int]) : Seq[Int]
+
+field lockMap : Ref
+
+
+method main(input1: Seq[SomeData], input2: Seq[SomeData], secret: Int)
+  requires lowEvent && low(input1) && low(input2)
+  requires forall e: SomeData :: e in input1 ==> key_split(key(e))
+  requires forall e: SomeData :: e in input2 ==> !key_split(key(e))
+  ensures true
+{
+  var m : Ref
+  m := createMap()
+  var l : Lock
+  l := new(lockMap)
+  l.lockMap := m
+  share[MapLock](l, empty())
+  var t1: Thread
+  var t2: Thread
+  t1 := fork worker(input1, l, secret, true)
+  t2 := fork worker(input2, l, secret, false)
+  join[worker](t1)
+  join[worker](t2)
+  unshare[MapLock](l)
+
+  var res: Seq[Int]
+  res := toSeq(keys(mapValue(l.lockMap)))
+  print(res)
+
+}
+
+
+method worker(inputs: Seq[SomeData], l: Lock, secret: Int, part: Bool)
+  requires lowEvent && low(inputs)
+  requires forall e: SomeData :: e in inputs ==> key_split(key(e)) == part
+  requires part ==> uguard[MapLock,Put1](l) && uguardArgs[MapLock,Put1](l) == Seq[Pair[Int, Int]]()
+  requires !part ==> uguard[MapLock,Put2](l) && uguardArgs[MapLock,Put2](l) == Seq[Pair[Int, Int]]()
+  ensures part ==> uguard[MapLock,Put1](l) && allPre[MapLock, Put1](uguardArgs[MapLock,Put1](l))
+  ensures !part ==> uguard[MapLock,Put2](l) && allPre[MapLock, Put2](uguardArgs[MapLock,Put2](l))
+{
+  var i : Int := 0
+  while (i < |inputs|) 
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant part ==> uguard[MapLock,Put1](l) && allPre[MapLock, Put1](uguardArgs[MapLock,Put1](l))
+    invariant !part ==> uguard[MapLock,Put2](l) && allPre[MapLock, Put2](uguardArgs[MapLock,Put2](l))
+    invariant forall e: SomeData :: e in inputs ==> key_split(key(e)) == part
+  {
+    var k: Int
+    var v: Int
+    k, v := compute(inputs[i], secret)
+    if (part){
+        assert low(pair(k, v))
+        assert key_split(fst(pair(k, v)))
+        with[MapLock] l performing Put1(pair(k, v))  {
+            var tmp1 : MyMap[Int, Int]
+            tmp1 := mapValue(l.lockMap)
+            mapPut(l.lockMap, k, v)
+            assert mapValue(l.lockMap) == put(tmp1, k, v)
+        }
+    }else{
+        with[MapLock] l performing Put2(pair(k, v))  {
+            var tmp : MyMap[Int, Int]
+            tmp := mapValue(l.lockMap)
+            mapPut(l.lockMap, k, v)
+            assert mapValue(l.lockMap) == put(tmp, k, v)
+        }
+    }
+
+    //release[MapLock](l, Put(pair(k, v)))
+    i := i + 1
+  }
+}
