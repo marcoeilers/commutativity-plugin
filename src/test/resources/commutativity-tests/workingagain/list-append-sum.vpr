@@ -1,9 +1,8 @@
 import "library/seq_multiset.vpr"
 import "library/list.vpr"
 import "library/array.vpr"
-import "library/pair.vpr"
 
-// mean-salary
+// debt-sum
 
 domain SumDomain {
   function sum(s: Seq[Int]): Int
@@ -22,18 +21,13 @@ domain SumDomain {
 method print(i: Int)
   requires lowEvent && low(i)
 
-method compute(vl: Ref) returns (r1: Int)
-  requires patient(vl)
-  ensures patient(vl) && low(r1)
-{
-    r1 := vl.salary
-}
+
 
 
 lockType ListLock {
     type Seq[Int]
     invariant(l, v) = [l.lockList |-> ?lp && list(lp) && v == listValue(lp)]
-    alpha(v): Pair[Int, Int] = pair(sum(v), |v|)
+    alpha(v): Int = sum(v)
 
     actions = [(Append, Int, duplicable)]
 
@@ -62,15 +56,15 @@ predicate joinableArrayEntry(rec: Ref, inputs: Seq[Ref], l: Ref, lbl: Int) {
 function N(): Int
     ensures result > 1
 
-
+// credit entry
 define patient(r) (
-    acc(r.name) && acc(r.salary) && acc(r.id) && acc(r.dob) && low(r.salary)
+    acc(r.creditor) && acc(r.amount) && acc(r.duedate) && acc(r.interest) && low(r.amount)
 )
 
-field name: Int
-field salary: Int
-field id: Int
-field dob: Int
+field creditor: Int
+field amount: Int
+field duedate: Int
+field interest: Int
 
 
 method main(inputs: Seq[Seq[Ref]])
@@ -119,7 +113,7 @@ method main(inputs: Seq[Seq[Ref]])
   unshare[ListLock](l)
 
   var lv : Seq[Int] := listValue(l.lockList)
-  print(|lv| > 0 ? sum(lv) \ |lv| : 0)
+  print(sum(lv))
 
 }
 
@@ -135,7 +129,7 @@ method worker(inputs: Seq[Ref], l: Lock, lbl: Int)
     invariant forall jp: Int :: jp >= 0 && jp < |inputs| ==> patient(inputs[jp])
   {
     var v: Int
-    v := compute(inputs[i])
+    v := inputs[i].amount
     with[ListLock] l performing Append(v) at lbl {
         append(l.lockList, v)
     }

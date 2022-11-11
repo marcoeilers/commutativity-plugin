@@ -38,7 +38,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
   import fastparse.noApi._
 
   override lazy val newDeclAtEnd = P(lockSpec | barrierSpec)
-  override lazy val newExpAtStart = P(pointsToPred | joinable | low | rel | lowEvent | barrier | uguard | sguard | uguardargs | sguardargs | allpre)
+  override lazy val newExpAtStart = P(pointsToPred | joinable | low | lowEvent | barrier | uguard | sguard | uguardargs | sguardargs | allpre)
   override lazy val newStmtAtStart = P(fork | join | newBarrier | withcmd | share | unshare | merge | split | waitStmt)
 
   lazy val cStyleMethod : P[PMethod] = P(ctyp ~ idndef ~ parens(cvardecl.rep(sep=",")) ~ "{" ~ "}").map{
@@ -148,9 +148,9 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
   lazy val low : P[PLow] = P(keyword("low") ~/ parens(exp)).map{
     case arg => PLow(arg)
   }
-  lazy val rel : P[PRel] = P(keyword("rel") ~/ parens(idnuse ~ "," ~ integer)).map{
-    case (arg, i) => PRel(arg, i)
-  }
+//  lazy val rel : P[PRel] = P(keyword("rel") ~/ parens(idnuse ~ "," ~ integer)).map{
+//    case (arg, i) => PRel(arg, i)
+//  }
   lazy val lowEvent : P[PLowEvent] = P(keyword("lowEvent")).map{
     case arg => PLowEvent()
   }
@@ -1098,7 +1098,7 @@ class CommutativityPlugin extends ParserPluginTemplate with SilverPlugin {
     res = res.copy(functions=res.functions.filter(f => f.name != "intervalSet") ++ Seq(getIntervalSetFunction()), domains=res.domains ++ Seq(generateAllPre(lockSpecs.values.toSeq)))(res.pos, res.info, res.errT)
 
     val productRes = SIFExtendedTransformer.transform(res, false)
-    println(productRes)
+    //println(productRes)
     val qpTransformed = productRes.transform({
       case fa: Forall => {
         if (fa.isPure) {

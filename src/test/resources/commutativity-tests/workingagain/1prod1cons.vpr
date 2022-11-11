@@ -122,7 +122,6 @@ method consumer(l: Lock, n: Int, secret: Int) returns (res: Int)
         assume listlen > 0 // TODO: with when
 
         ohist := l.history
-        assert true
         recVal := dequeue(l.queue)
         l.history := l.history ++ Seq(recVal)
     }

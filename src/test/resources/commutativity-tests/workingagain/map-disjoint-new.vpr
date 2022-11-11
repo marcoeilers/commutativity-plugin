@@ -219,13 +219,12 @@ method mapGet(r: Ref, k: Int) returns (contained: Bool, vl: Int)
 
 //// until here
 
+// sales by region
+
 
 method print(i: Seq[Int])
   requires lowEvent && low(i)
 
-domain RegionMap {
-    function shopToRegion(shp: Int): Int
-}
 
 lockType MapLock {
   type MyMap[Int, Int]
@@ -235,11 +234,11 @@ lockType MapLock {
   actions = [(Put1, Pair[Int, Int], unique),(Put2, Pair[Int, Int], unique)]
 
   action Put1(v, arg)
-    requires low(arg) && shopToRegion(fst(arg)) == 1
+    requires low(arg) && key_split(fst(arg))
   { (put(v, fst(arg), snd(arg))) }
 
   action Put2(v, arg)
-      requires low(arg) && shopToRegion(fst(arg)) == 2
+      requires low(arg) && !key_split(fst(arg))
     { (put(v, fst(arg), snd(arg))) }
 
   proof commutativity[Put1, Put2](v, arg1, arg2) {
@@ -251,24 +250,31 @@ lockType MapLock {
   noLabels = 1
 }
 
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[Ref], l: Ref, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, lbl)]
+}
+
 function toSeq(s: Set[Int]) : Seq[Int]
 
 field lockMap : Ref
 
+function N(): Int
+    ensures result > 1
 
+function nTargets(): Int
+
+// sal
 define patient(r) (
-    acc(r.shop) && acc(r.sales) && acc(r.region) && low(r.shop) && low(r.sales) && low(r.region) && shopToRegion(r.shop) == r.region
+    acc(r.addr) && acc(r.reason) && low(r.addr)
 )
 
-field shop: Int
-field sales: Int
-field region: Int
+field addr: Int
+field reason: Int
 
-
-method main(input1: Seq[Ref], input2: Seq[Ref])
-  requires lowEvent && low(|input1|) && low(|input2|)
-  requires forall jp: Int :: {input1[jp]} jp >= 0 && jp < |input1| ==> patient(input1[jp]) && input1[jp].region == 1
-  requires forall jp: Int :: {input2[jp]} jp >= 0 && jp < |input2| ==> patient(input2[jp]) && input2[jp].region == 2
+method main(inputs: Seq[Seq[Ref]])
+  requires lowEvent && low(|inputs|) && |inputs| == N()
+    requires forall ip: Int :: ip >= 0 && ip < N() ==> low(|inputs[ip]|)
+    requires forall ip: Int, jp: Int :: ip >= 0 && ip < N() && jp >= 0 && jp < |inputs[ip]| ==> patient(inputs[ip][jp])
 {
   var m : Ref
   m := createMap()
@@ -276,12 +282,40 @@ method main(input1: Seq[Ref], input2: Seq[Ref])
   l := new(lockMap)
   l.lockMap := m
   share[MapLock](l, empty())
-  var t1: Thread
-  var t2: Thread
-  t1 := fork worker(input1, l, true)
-  t2 := fork worker(input2, l, false)
-  join[worker](t1)
-  join[worker](t2)
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|inputs|)
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, j)
+    //invariant lock[MapLock](l, (|inputs|+1-i)/(|inputs| + 1))
+    invariant sguard[MapLock,Put](l, intervalSet(i, N())) && sguardArgs[MapLock, Put](l, intervalSet(i, N())) == Multiset[Pair[Int, Int]]()
+    invariant forall ip: Int, jp: Int :: ip >= i && ip < N() && jp >= 0 && jp < |inputs[ip]| ==> patient(inputs[ip][jp])
+  {
+    var t: Thread
+    assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
+    split[MapLock,Put](l, Set(i), intervalSet(i+1, N()), Multiset[Pair[Int, Int]](), Multiset[Pair[Int, Int]]())
+    t := fork worker(inputs[i], l, i)
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, i)
+    i := i + 1
+  }
+  
+  i := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, j)
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
+    //invariant lock[MapLock](l, (i+1)/(|inputs| + 1))
+    invariant sguard[MapLock,Put](l, intervalSet(0, i)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, intervalSet(0, i)))
+  {
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, i)
+    join[worker](loc(threads, i).arr_loc)
+    assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
+    merge[MapLock, Put](l, Set(i), intervalSet(0, i))
+    i := i + 1
+  }
   unshare[MapLock](l)
 
   var res: Seq[Int]
@@ -291,42 +325,26 @@ method main(input1: Seq[Ref], input2: Seq[Ref])
 }
 
 
-method worker(inputs: Seq[Ref], l: Lock, part: Bool)
-  requires lowEvent && low(|inputs|)
-  requires forall jp: Int :: {inputs[jp]} jp >= 0 && jp < |inputs| ==> patient(inputs[jp]) && inputs[jp].region == (part ? 1 : 2)
-  requires part ==> uguard[MapLock,Put1](l) && uguardArgs[MapLock,Put1](l) == Seq[Pair[Int, Int]]()
-  requires !part ==> uguard[MapLock,Put2](l) && uguardArgs[MapLock,Put2](l) == Seq[Pair[Int, Int]]()
-  ensures part ==> uguard[MapLock,Put1](l) && allPre[MapLock, Put1](uguardArgs[MapLock,Put1](l))
-  ensures !part ==> uguard[MapLock,Put2](l) && allPre[MapLock, Put2](uguardArgs[MapLock,Put2](l))
+method worker(inputs: Seq[Ref], l: Lock, lbl: Int)
+  requires lowEvent && low(|inputs|) && sguard[MapLock,Put](l, Set(lbl)) && sguardArgs[MapLock,Put](l, Set(lbl)) == Multiset[Pair[Int, Int]]()
+  requires forall jp: Int :: jp >= 0 && jp < |inputs| ==> patient(inputs[jp])
+  ensures sguard[MapLock,Put](l, Set(lbl)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, Set(lbl)))
 {
   var i : Int := 0
   while (i < |inputs|) 
-    invariant i >= 0 && i <= |inputs| && low(i)
-    invariant part ==> uguard[MapLock,Put1](l) && allPre[MapLock, Put1](uguardArgs[MapLock,Put1](l))
-    invariant !part ==> uguard[MapLock,Put2](l) && allPre[MapLock, Put2](uguardArgs[MapLock,Put2](l))
-    invariant forall jp: Int :: {inputs[jp]} jp >= 0 && jp < |inputs| ==> patient(inputs[jp]) && inputs[jp].region == (part ? 1 : 2)
+    invariant i >= 0 && i <= |inputs| && low(i) && sguard[MapLock,Put](l, Set(lbl)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, Set(lbl)))
+    invariant forall jp: Int :: jp >= 0 && jp < |inputs| ==> patient(inputs[jp])
   {
     var k: Int
     var v: Int
-    k := inputs[i].shop
-    v := inputs[i].sales
-    assert shopToRegion(k) == (part ? 1 : 2)
-    if (part){
-        assert low(pair(k, v))
-        with[MapLock] l performing Put1(pair(k, v))  {
-            var tmp1 : MyMap[Int, Int]
-            tmp1 := mapValue(l.lockMap)
-            mapPut(l.lockMap, k, v)
-            assert mapValue(l.lockMap) == put(tmp1, k, v)
-        }
-    }else{
-        assert low(pair(k, v))
-        with[MapLock] l performing Put2(pair(k, v))  {
-            var tmp : MyMap[Int, Int]
-            tmp := mapValue(l.lockMap)
-            mapPut(l.lockMap, k, v)
-            assert mapValue(l.lockMap) == put(tmp, k, v)
-        }
+    k := inputs[i].addr
+    v := inputs[i].reason
+    //acquire[MapLock](l)
+    with[MapLock] l performing Put(pair(k, v)) at lbl {
+        var tmp : MyMap[Int, Int]
+        tmp := mapValue(l.lockMap)
+        mapPut(l.lockMap, k, v)
+        assert mapValue(l.lockMap) == put(tmp, k, v)
     }
 
     //release[MapLock](l, Put(pair(k, v)))

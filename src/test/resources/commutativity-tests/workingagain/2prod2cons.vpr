@@ -54,8 +54,6 @@ method dequeue(l: Ref) returns (r: Int)
 
 field queue: Ref
 
-function N(): Int
-    ensures result > 0
 
 
 method main(inputs1: Seq[Int], inputs2: Seq[Int], secret: Int)

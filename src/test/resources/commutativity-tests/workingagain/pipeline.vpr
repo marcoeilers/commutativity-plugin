@@ -117,7 +117,6 @@ method middle(l1: Lock, l2: Lock, n: Int, secret: Int)
             assume listlen > 0 // TODO: with when
 
             ohist := l1.history
-            assert true
             recVal := dequeue(l1.queue)
             l1.history := l1.history ++ Seq(recVal)
         }
@@ -166,7 +165,6 @@ method consumer(l: Lock, n: Int, secret: Int) returns (res: Int)
         assume listlen > 0 // TODO: with when
 
         ohist := l.history
-        assert true
         recVal := dequeue(l.queue)
         l.history := l.history ++ Seq(recVal)
     }

@@ -2,7 +2,7 @@ package commutativity
 
 import viper.silver.ast._
 import viper.silver.parser._
-import viper.silver.sif.{SIFLowEventExp, SIFLowExp, SIFRelExp}
+import viper.silver.sif.{SIFLowEventExp, SIFLowExp}
 
 import scala.collection.mutable.ListBuffer
 
@@ -357,34 +357,34 @@ case class PLow(e: PExp) extends PExtender with PExp {
   }
 }
 
-case class PRel(e: PIdnUse, i: PIntLit) extends PExtender with PExp {
-  override def forceSubstitution(ts: PTypeSubstitution): Unit = {
-    _typeSubstutions = Seq(ts)
-  }
-
-  var _typeSubstutions : Seq[PTypeSubstitution] = Seq(PTypeSubstitution.id)
-
-  override def typeSubstitutions: Seq[PTypeSubstitution] = _typeSubstutions
-
-  override def getsubnodes(): Seq[PNode] = Seq(e, i)
-
-  override def typecheck(t: TypeChecker, n: NameAnalyser): Option[Seq[String]] = {
-    t.checkTopTyped(e, None)
-    this.typ = e.typ
-    if (i.i != 0 && i.i != 1)
-      Some(Seq("Only executions 0 and one are valid in rel-expressions"))
-    else
-      None
-  }
-
-  override def translateExp(t: Translator): Exp = {
-    SIFRelExp(t.exp(e).asInstanceOf[LocalVar], t.exp(i).asInstanceOf[IntLit])(t.liftPos(this))
-  }
-
-  override def transform(go: PNode => PNode): PExtender = {
-    PRel(go(e).asInstanceOf[PIdnUse], go(i).asInstanceOf[PIntLit])
-  }
-}
+//case class PRel(e: PIdnUse, i: PIntLit) extends PExtender with PExp {
+//  override def forceSubstitution(ts: PTypeSubstitution): Unit = {
+//    _typeSubstutions = Seq(ts)
+//  }
+//
+//  var _typeSubstutions : Seq[PTypeSubstitution] = Seq(PTypeSubstitution.id)
+//
+//  override def typeSubstitutions: Seq[PTypeSubstitution] = _typeSubstutions
+//
+//  override def getsubnodes(): Seq[PNode] = Seq(e, i)
+//
+//  override def typecheck(t: TypeChecker, n: NameAnalyser): Option[Seq[String]] = {
+//    t.checkTopTyped(e, None)
+//    this.typ = e.typ
+//    if (i.i != 0 && i.i != 1)
+//      Some(Seq("Only executions 0 and one are valid in rel-expressions"))
+//    else
+//      None
+//  }
+//
+//  override def translateExp(t: Translator): Exp = {
+//    SIFRelExp(t.exp(e).asInstanceOf[LocalVar], t.exp(i).asInstanceOf[IntLit])(t.liftPos(this))
+//  }
+//
+//  override def transform(go: PNode => PNode): PExtender = {
+//    PRel(go(e).asInstanceOf[PIdnUse], go(i).asInstanceOf[PIntLit])
+//  }
+//}
 
 case class PLowEvent() extends PExtender with PExp {
   override def forceSubstitution(ts: PTypeSubstitution): Unit = {

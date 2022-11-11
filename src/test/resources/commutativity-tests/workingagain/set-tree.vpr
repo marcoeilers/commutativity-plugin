@@ -1,12 +1,9 @@
 import "library/array.vpr"
 
-domain SomeValue {}
+// sick-employee-names
 
 method print(i: Set[Int])
   requires lowEvent && low(i)
-
-method compute(vl: SomeValue, secret: Int) returns (r1: Int)
-  ensures low(vl) ==> low(r1)
 
 
 lockType SetLock {
@@ -23,8 +20,8 @@ lockType SetLock {
   noLabels = N()
 }
 
-predicate joinableArrayEntry(rec: Ref, inputs: Seq[SomeValue], l: Ref, secret: Int, lbl: Int) {
-  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, secret, lbl)]
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[Ref], l: Ref, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, lbl)]
 }
 
 
@@ -34,10 +31,19 @@ function N(): Int
     ensures result > 1
 
 
-method main(inputs: Seq[Seq[SomeValue]], secret: Int)
-  requires lowEvent && low(inputs)
-  requires |inputs| == N()
-  ensures true
+define patient(r) (
+    acc(r.name) && acc(r.issick) && acc(r.id) && low(r.issick) && low(r.name)
+)
+
+field name: Int
+field issick: Bool
+field id: Int
+
+
+method main(inputs: Seq[Seq[Ref]])
+  requires lowEvent && low(|inputs|) && |inputs| == N()
+  requires forall ip: Int :: ip >= 0 && ip < N() ==> low(|inputs[ip]|)
+  requires forall ip: Int, jp: Int :: ip >= 0 && ip < N() && jp >= 0 && jp < |inputs[ip]| ==> patient(inputs[ip][jp])
 {
   var s : Ref
   s := newTreeSet()
@@ -51,26 +57,27 @@ method main(inputs: Seq[Seq[SomeValue]], secret: Int)
   while (i < |inputs|)
     invariant i >= 0 && i <= |inputs| && low(i)
     invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
-    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, j)
     invariant sguard[SetLock,Add](l, intervalSet(i, N())) && sguardArgs[SetLock, Add](l, intervalSet(i, N())) == Multiset[Int]()
+    invariant forall ip: Int, jp: Int :: ip >= i && ip < N() && jp >= 0 && jp < |inputs[ip]| ==> patient(inputs[ip][jp])
   {
     var t: Thread
     assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
     split[SetLock,Add](l, Set(i), intervalSet(i+1, N()), Multiset[Int](), Multiset[Int]())
-    t := fork worker(inputs[i], l, secret, i)
+    t := fork worker(inputs[i], l, i)
     loc(threads, i).arr_loc := t
-    fold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, i)
     i := i + 1
   }
   
   i := 0
   while (i < |inputs|)
     invariant i >= 0 && i <= |inputs| && low(i)
-    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, secret, j)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, j)
     invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
     invariant sguard[SetLock,Add](l, intervalSet(0, i)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, intervalSet(0, i)))
   {
-    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, secret, i)
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, i)
     join[worker](loc(threads, i).arr_loc)
     assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
     merge[SetLock, Add](l, Set(i), intervalSet(0, i))
@@ -84,19 +91,24 @@ method main(inputs: Seq[Seq[SomeValue]], secret: Int)
 }
 
 
-method worker(inputs: Seq[SomeValue], l: Lock, secret: Int, lbl: Int)
-  requires lowEvent && low(inputs) && sguard[SetLock,Add](l, Set(lbl)) && sguardArgs[SetLock,Add](l, Set(lbl)) == Multiset[Int]()
+method worker(inputs: Seq[Ref], l: Lock, lbl: Int)
+  requires lowEvent && low(|inputs|) && sguard[SetLock,Add](l, Set(lbl)) && sguardArgs[SetLock,Add](l, Set(lbl)) == Multiset[Int]()
+  requires forall jp: Int :: jp >= 0 && jp < |inputs| ==> patient(inputs[jp])
   ensures sguard[SetLock,Add](l, Set(lbl)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, Set(lbl)))
 {
   var i : Int := 0
   while (i < |inputs|) 
     invariant i >= 0 && i <= |inputs| && low(i) && sguard[SetLock,Add](l, Set(lbl)) && allPre[SetLock, Add](sguardArgs[SetLock,Add](l, Set(lbl)))
+    invariant forall jp: Int :: jp >= 0 && jp < |inputs| ==> patient(inputs[jp])
   {
     var v: Int
-    v := compute(inputs[i], secret)
-    with[SetLock] l performing Add(v) at lbl {
-        TreeSet_AddElement(l.lockSet, v)
+    v := inputs[i].name
+    if (inputs[i].issick) {
+        with[SetLock] l performing Add(v) at lbl {
+            TreeSet_AddElement(l.lockSet, v)
+        }
     }
+
 
     i := i + 1
   }
