@@ -1,7 +1,5 @@
 import "library/array.vpr"
 
-domain SomeValue {}
-
 method print(i: Int)
   requires lowEvent && low(i)
 

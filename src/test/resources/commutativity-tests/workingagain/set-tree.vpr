@@ -114,6 +114,8 @@ method worker(inputs: Seq[Ref], l: Lock, lbl: Int)
   }
 }
 
+//47c, 43a
+
 
 // set implementation with sorted list
 field left: Ref
@@ -266,3 +268,5 @@ method newTreeSet() returns (r: Ref)
 predicate fullstree(this: Ref) {
   acc(this.root) && stree(this.root) && isBst(this.root)
 }
+
+//58c, 70a

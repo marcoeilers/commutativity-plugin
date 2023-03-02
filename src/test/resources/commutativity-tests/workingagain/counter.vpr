@@ -99,7 +99,7 @@ method main(inputs: Seq[Seq[Ref]])
 
 }
 
-
+// 39 c, 41a
 method worker(inputs: Seq[Ref], l: Lock, lbl: Int)
   requires lowEvent && low(|inputs|) && sguard[CounterLock,Add](l, Set(lbl)) && sguardArgs[CounterLock,Add](l, Set(lbl)) == Multiset[Unit]()
   requires forall jp: Int :: jp >= 0 && jp < |inputs| ==> patient(inputs[jp])
@@ -122,3 +122,4 @@ method worker(inputs: Seq[Ref], l: Lock, lbl: Int)
     i := i + 1
   }
 }
+// 15c, 5a

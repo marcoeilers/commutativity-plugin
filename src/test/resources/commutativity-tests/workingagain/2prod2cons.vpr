@@ -54,12 +54,13 @@ method dequeue(l: Ref) returns (r: Int)
 
 field queue: Ref
 
+function N(): Int
+    ensures result > 1
 
 
 method main(inputs1: Seq[Int], inputs2: Seq[Int], secret: Int)
   requires lowEvent && low(inputs1) && low(inputs2)
   requires |inputs1| == N() && |inputs2| == N()
-  ensures true
 {
   
   var l : Lock

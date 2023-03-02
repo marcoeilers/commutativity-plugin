@@ -44,11 +44,6 @@ lockType ListLock {
   noLabels = N()
 }
 
-method sortList(r: Ref)
-  requires list(r)
-  ensures list(r)
-  ensures low(old(seq_to_ms(listValue(r)))) ==> low(listValue(r))
-
 field lockList : Ref
 
 function toSeq(s: Set[Int]) : Seq[Int]
