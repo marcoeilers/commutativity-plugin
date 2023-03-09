@@ -14,6 +14,8 @@ field seenDone2: Bool
 
 lockType Channel {
   type Seq[Int]
+  // The invariant is complex because we track various ghost state, e.g., each producer tracks which items it has produced.
+  // v is mapped to the sequence of produced items.
   invariant(l, v) = [l.queue |-> ?qp && list(qp) &&
                       acc(l.prod1, 1/2) && acc(l.prod2, 1/2) && acc(l.prod) && acc(l.cons1, 1/2) && acc(l.cons2, 1/2) && acc(l.seenDone1, 1/2) && acc(l.seenDone2, 1/2) &&
                       seq_to_ms(l.prod) == seq_to_ms(listValue(qp)) union seq_to_ms(l.cons1) union seq_to_ms(l.cons2) &&
@@ -24,7 +26,7 @@ lockType Channel {
                       (l.seenDone2 ==> |listValue(qp)| == 0 && |seq_to_ms(listValue(qp))| == 0 && |l.prod| == 2*N()) &&
                       |l.prod1| <= N() && |l.prod2| <= N() &&
                       v == l.prod]
-  alpha(v) : Multiset[Int] = seq_to_ms(v)
+  alpha(v) : Multiset[Int] = seq_to_ms(v)  // the multiset view of the produced items is low
 
   actions = [(Prod, Int, duplicable), (Cons, Unit, duplicable)]
 

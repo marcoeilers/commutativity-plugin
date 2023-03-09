@@ -117,9 +117,8 @@ method consumer(l: Lock, n: Int, secret: Int) returns (res: Int)
     var recVal: Int
     var ohist : Seq[Int]
     var listlen: Int
-    with[Channel] l performing Cons(unit()) {
+    with[Channel] l when (|listValue(l.queue)| > 0) performing Cons(unit()) {
         listlen := listLength(l.queue)
-        assume listlen > 0 // TODO: with when
 
         ohist := l.history
         recVal := dequeue(l.queue)

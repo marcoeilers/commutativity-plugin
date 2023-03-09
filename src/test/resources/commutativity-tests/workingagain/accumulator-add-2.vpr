@@ -75,7 +75,6 @@ function nBuckets(): Int
 { 4 }
 
 predicate ListMap(r: Ref) {
-
   (acc(r.key) && acc(r.value) && acc(r.next) && (r.next != null ==> ListMap(r.next) && !ListMap_contains(r.next, r.key)))
 }
 

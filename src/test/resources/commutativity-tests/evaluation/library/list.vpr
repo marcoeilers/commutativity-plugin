@@ -1,0 +1,56 @@
+field next: Ref
+field value: Int
+
+predicate list(r: Ref) {
+  acc(r.next) && acc(r.value) && (r.next != null ==> list(r.next))
+}
+function listValue(r: Ref): Seq[Int]
+  requires acc(list(r), wildcard)
+{
+  unfolding acc(list(r), wildcard) in
+  r.next == null ? Seq[Int]()
+  :
+  Seq(r.value) ++ listValue(r.next)
+}
+
+method createList() returns (r: Ref)
+  ensures list(r)
+  ensures listValue(r) == Seq[Int]()
+{
+  r := new(next, value)
+  r.next := null
+  fold list(r)
+}
+
+method append(r: Ref, i: Int)
+  requires list(r)
+  ensures list(r)
+  ensures listValue(r) == old(listValue(r)) ++ Seq(i)
+{
+  unfold list(r)
+  var tmp: Ref
+  if (r.next == null) {
+    tmp := new(next, value)
+    tmp.next := null
+    fold list(tmp)
+    r.next := tmp
+    r.value := i
+  }else{
+    append(r.next, i)
+  }
+  fold list(r)
+}
+
+method listLength(l: Ref) returns (r: Int)
+  requires acc(list(l), 1/2)
+  ensures acc(list(l), 1/2) && r == |listValue(l)|
+{
+  unfold acc(list(l), 1/2)
+  if (l.next == null) {
+    r := 0
+  }else{
+    r := listLength(l.next)
+    r := r + 1
+  }
+  fold acc(list(l), 1/2)
+}

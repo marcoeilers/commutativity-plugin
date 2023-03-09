@@ -1,0 +1,146 @@
+import "library/pair.vpr"
+import "library/hashmap_ref.vpr"
+
+// count-purchases
+
+
+method print(i: Seq[Int])
+  requires lowEvent && low(i)
+
+
+lockType MapLock {
+  type MyMap[Int, Int]
+  invariant(l, v) = [l.lockMap |-> ?mp && isMap(mp) && v == mapValue(mp)]
+  alpha(v): MyMap[Int, Int] = v
+
+    actions = [(AddValue, Pair[Int, Int], duplicable)]
+
+      action AddValue(v, arg)  // Adds a low value to the current value of a low key
+        requires low(arg)
+      { (fst(arg) in keys(v) ? put(v, fst(arg), snd(arg) + get(v, fst(arg))) : put(v, fst(arg), snd(arg))) }
+
+      proof commutativity[AddValue, AddValue](v, arg1, arg2) {
+        var r11 : MyMap[Int, Int]
+        var r12 : MyMap[Int, Int]
+        var r21 : MyMap[Int, Int]
+        var r22 : MyMap[Int, Int]
+
+        r11 := (fst(arg1) in keys(v) ? put(v, fst(arg1), snd(arg1) + get(v, fst(arg1))) : put(v, fst(arg1), snd(arg1)))
+        r12 := (fst(arg2) in keys(r11) ? put(r11, fst(arg2), snd(arg2) + get(r11, fst(arg2))) : put(r11, fst(arg2), snd(arg2)))
+
+        r21 := (fst(arg2) in keys(v) ? put(v, fst(arg2), snd(arg2) + get(v, fst(arg2))) : put(v, fst(arg2), snd(arg2)))
+        r22 := (fst(arg1) in keys(r21) ? put(r21, fst(arg1), snd(arg1) + get(r21, fst(arg1))) : put(r21, fst(arg1), snd(arg1)))
+
+        assert map_eq(r12, r22)
+      }
+
+  noLabels = N()
+}
+
+// customer data including name and ID and purchased items: only the number of purchased items and the ID are low.
+define customer(r) (
+    acc(r.id) && acc(r.name) && acc(r.items) && low(|r.items|) && low(r.id)
+)
+
+field name: Int
+field id: Int
+field items: Seq[Int]
+
+method main(inputs: Seq[Seq[Ref]])
+  requires lowEvent && low(|inputs|) && |inputs| == N()
+    requires forall ip: Int :: ip >= 0 && ip < N() ==> low(|inputs[ip]|)
+    requires forall ip: Int, jp: Int :: ip >= 0 && ip < N() && jp >= 0 && jp < |inputs[ip]| ==> customer(inputs[ip][jp])
+{
+  var m : Ref
+  m := createMap()
+  var l : Lock
+  l := new(lockMap)
+  l.lockMap := m
+  share[MapLock](l, empty())
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|inputs|)
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, j)
+    invariant sguard[MapLock,AddValue](l, intervalSet(i, N())) && sguardArgs[MapLock, AddValue](l, intervalSet(i, N())) == Multiset[Pair[Int, Int]]()
+    invariant forall ip: Int, jp: Int :: ip >= i && ip < N() && jp >= 0 && jp < |inputs[ip]| ==> customer(inputs[ip][jp])
+  {
+    var t: Thread
+    assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
+    split[MapLock,AddValue](l, Set(i), intervalSet(i+1, N()), Multiset[Pair[Int, Int]](), Multiset[Pair[Int, Int]]())
+    t := fork worker(inputs[i], l, i)
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), inputs[i], l, i)
+    i := i + 1
+  }
+  
+  i := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, j)
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
+    invariant sguard[MapLock,AddValue](l, intervalSet(0, i)) && allPre[MapLock, AddValue](sguardArgs[MapLock,AddValue](l, intervalSet(0, i)))
+  {
+    unfold joinableArrayEntry(loc(threads, i), inputs[i], l, i)
+    join[worker](loc(threads, i).arr_loc)
+    assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
+    merge[MapLock, AddValue](l, Set(i), intervalSet(0, i))
+    i := i + 1
+  }
+  unshare[MapLock](l)
+
+  var res: Seq[Int]
+  res := toSeq(keys(mapValue(l.lockMap)))
+  print(res)
+
+}
+
+
+method worker(inputs: Seq[Ref], l: Lock, lbl: Int)
+  requires lowEvent && low(|inputs|) && sguard[MapLock,AddValue](l, Set(lbl)) && sguardArgs[MapLock,AddValue](l, Set(lbl)) == Multiset[Pair[Int, Int]]()
+  requires forall jp: Int :: jp >= 0 && jp < |inputs| ==> customer(inputs[jp])
+  ensures sguard[MapLock,AddValue](l, Set(lbl)) && allPre[MapLock, AddValue](sguardArgs[MapLock,AddValue](l, Set(lbl)))
+{
+  var i : Int := 0
+  while (i < |inputs|) 
+    invariant i >= 0 && i <= |inputs| && low(i) && sguard[MapLock,AddValue](l, Set(lbl)) && allPre[MapLock, AddValue](sguardArgs[MapLock,AddValue](l, Set(lbl)))
+    invariant forall jp: Int :: jp >= 0 && jp < |inputs| ==> customer(inputs[jp])
+  {
+    var k: Int
+    k := inputs[i].id
+    var v: Int
+    v := |inputs[i].items|
+    with[MapLock] l performing AddValue(pair(k, v)) at lbl {
+        var tmp : MyMap[Int, Int]
+        tmp := mapValue(l.lockMap)
+        var contained: Bool
+        var currentVal : Int
+        contained, currentVal := mapGet(l.lockMap, k)
+        if (!contained){
+            mapPut(l.lockMap, k, v)
+            assert mapValue(l.lockMap) == put(tmp, k, v)
+        }else{
+            mapPut(l.lockMap, k, v + currentVal)
+            assert mapValue(l.lockMap) == put(tmp, k, v + currentVal)
+        }
+    }
+
+    i := i + 1
+  }
+}
+
+
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[Ref], l: Ref, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, lbl)]
+}
+
+function toSeq(s: Set[Int]) : Seq[Int]
+
+field lockMap : Ref
+
+function N(): Int
+    ensures result > 1
+
+function nTargets(): Int

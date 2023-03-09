@@ -1,0 +1,126 @@
+import "library/pair.vpr"
+import "library/hashmap_ref.vpr"
+
+// Figure 3
+
+lockType MapLock {
+  type MyMap[Int, Int]
+  invariant(l, v) = [l.lockMap |-> ?mp && isMap(mp) && v == mapValue(mp)]
+  alpha(v): Set[Int] = keys(v)  // abstract to key set
+
+  actions = [(Put, Pair[Int, Int], duplicable)]
+  
+  action Put(v, arg)
+    requires low(fst(arg))
+  { (put(v, fst(arg), snd(arg))) }
+
+  noLabels = N()
+}
+
+// Household data contains a low address and a high reason for selection
+define householdData(r) (
+    acc(r.addr) && acc(r.reason) && low(r.addr)
+)
+
+field addr: Int
+field reason: Int
+
+method main(households: Seq[Seq[Ref]])
+  requires lowEvent && low(|households|) && |households| == N()
+    requires forall ip: Int :: ip >= 0 && ip < N() ==> low(|households[ip]|)
+    requires forall ip: Int, jp: Int :: ip >= 0 && ip < N() && jp >= 0 && jp < |households[ip]| ==> householdData(households[ip][jp])
+{
+  var m : Ref
+  m := createMap()
+  var l : Lock
+  l := new(lockMap)
+  l.lockMap := m
+  share[MapLock](l, empty())
+  var i : Int := 0
+  var threads : Array
+  threads := emptyArray(|households|)
+  while (i < |households|)
+    invariant i >= 0 && i <= |households| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |households| && j >= i ==> [loc(threads, j).arr_loc |-> _]
+    invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), households[j], l, j)
+    invariant sguard[MapLock,Put](l, intervalSet(i, N())) && sguardArgs[MapLock, Put](l, intervalSet(i, N())) == Multiset[Pair[Int, Int]]()
+    invariant forall ip: Int, jp: Int :: ip >= i && ip < N() && jp >= 0 && jp < |households[ip]| ==> householdData(households[ip][jp])
+  {
+    var t: Thread
+    assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
+    split[MapLock,Put](l, Set(i), intervalSet(i+1, N()), Multiset[Pair[Int, Int]](), Multiset[Pair[Int, Int]]())
+    t := fork worker(households[i], l, i)
+    loc(threads, i).arr_loc := t
+    fold joinableArrayEntry(loc(threads, i), households[i], l, i)
+    i := i + 1
+  }
+  
+  i := 0
+  while (i < |households|)
+    invariant i >= 0 && i <= |households| && low(i)
+    invariant forall j : Int :: j >= 0 && j < |households| && j >= i ==> joinableArrayEntry(loc(threads, j), households[j], l, j)
+    invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
+    invariant sguard[MapLock,Put](l, intervalSet(0, i)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, intervalSet(0, i)))
+  {
+    unfold joinableArrayEntry(loc(threads, i), households[i], l, i)
+    join[worker](loc(threads, i).arr_loc)
+    assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
+    merge[MapLock, Put](l, Set(i), intervalSet(0, i))
+    i := i + 1
+  }
+  unshare[MapLock](l)
+
+  var res: Seq[Int]
+  res := toSeq(keys(mapValue(l.lockMap)))
+  print(res)
+
+}
+
+
+method worker(households: Seq[Ref], l: Lock, lbl: Int)
+  requires lowEvent && low(|households|) && sguard[MapLock,Put](l, Set(lbl)) && sguardArgs[MapLock,Put](l, Set(lbl)) == Multiset[Pair[Int, Int]]()
+  requires forall jp: Int :: jp >= 0 && jp < |households| ==> householdData(households[jp])
+  ensures sguard[MapLock,Put](l, Set(lbl)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, Set(lbl)))
+{
+  var i : Int := 0
+  while (i < |households|) 
+    invariant i >= 0 && i <= |households| && low(i) && sguard[MapLock,Put](l, Set(lbl)) && allPre[MapLock, Put](sguardArgs[MapLock,Put](l, Set(lbl)))
+    invariant forall jp: Int :: jp >= 0 && jp < |households| ==> householdData(households[jp])
+  {
+    var k: Int
+    var v: Int
+    k, v := select(households[i])
+    with[MapLock] l performing Put(pair(k, v)) at lbl {
+        var tmp : MyMap[Int, Int]
+        tmp := mapValue(l.lockMap)
+        mapPut(l.lockMap, k, v)
+        assert mapValue(l.lockMap) == put(tmp, k, v)
+    }
+
+    i := i + 1
+  }
+}
+
+method select(household: Ref) returns (adr: Int, rsn: Int)
+    requires householdData(household)
+    ensures householdData(household) && low(adr)
+{
+    adr := household.addr
+    rsn := household.reason
+}
+
+method print(i: Seq[Int])
+  requires lowEvent && low(i)
+
+predicate joinableArrayEntry(rec: Ref, households: Seq[Ref], l: Ref, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, households, l, lbl)]
+}
+
+function toSeq(s: Set[Int]) : Seq[Int]
+
+field lockMap : Ref
+
+function N(): Int
+    ensures result > 1
+
+function nTargets(): Int

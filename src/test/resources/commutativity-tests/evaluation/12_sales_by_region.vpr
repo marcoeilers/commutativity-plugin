@@ -1,0 +1,118 @@
+import "library/pair.vpr"
+import "library/hashmap_ref.vpr"
+
+
+domain RegionMap {
+    function shopToRegion(shp: Int): Int
+}
+
+lockType MapLock {
+  type MyMap[Int, Int]
+  invariant(l, v) = [l.lockMap |-> ?mp && isMap(mp) && v == mapValue(mp)]
+  alpha(v): MyMap[Int, Int] = v  // identity abstraction
+
+  actions = [(Put1, Pair[Int, Int], unique),(Put2, Pair[Int, Int], unique)]  // two unique put actions with disjoint key sets
+
+  action Put1(v, arg)
+    requires low(arg) && shopToRegion(fst(arg)) == 1
+  { (put(v, fst(arg), snd(arg))) }
+
+  action Put2(v, arg)
+      requires low(arg) && shopToRegion(fst(arg)) == 2
+    { (put(v, fst(arg), snd(arg))) }
+
+  proof commutativity[Put1, Put2](v, arg1, arg2) {
+    var r1 : MyMap[Int, Int] := put(put(v, fst(arg1), snd(arg1)), fst(arg2), snd(arg2))
+    var r2 : MyMap[Int, Int] := put(put(v, fst(arg2), snd(arg2)), fst(arg1), snd(arg1))
+    assert map_eq(r1, r2)
+  }
+
+  noLabels = 1
+}
+
+function toSeq(s: Set[Int]) : Seq[Int]
+
+field lockMap : Ref
+
+// shop data is entirely low
+define shopData(r) (
+    acc(r.shop) && acc(r.sales) && acc(r.region) && low(r.shop) && low(r.sales) && low(r.region) && shopToRegion(r.shop) == r.region
+)
+
+field shop: Int
+field sales: Int
+field region: Int
+
+
+method main(input1: Seq[Ref], input2: Seq[Ref])
+  requires lowEvent && low(|input1|) && low(|input2|)
+  requires forall jp: Int :: {input1[jp]} jp >= 0 && jp < |input1| ==> shopData(input1[jp]) && input1[jp].region == 1
+  requires forall jp: Int :: {input2[jp]} jp >= 0 && jp < |input2| ==> shopData(input2[jp]) && input2[jp].region == 2
+{
+  var m : Ref
+  m := createMap()
+  var l : Lock
+  l := new(lockMap)
+  l.lockMap := m
+  share[MapLock](l, empty())
+  var t1: Thread
+  var t2: Thread
+  t1 := fork worker(input1, l, true)
+  t2 := fork worker(input2, l, false)
+  join[worker](t1)
+  join[worker](t2)
+  unshare[MapLock](l)
+
+  var res: Seq[Int]
+  res := toSeq(keys(mapValue(l.lockMap)))
+  print(res)
+
+}
+
+
+method worker(inputs: Seq[Ref], l: Lock, part: Bool)
+  requires lowEvent && low(|inputs|)
+  requires forall jp: Int :: {inputs[jp]} jp >= 0 && jp < |inputs| ==> shopData(inputs[jp]) && inputs[jp].region == (part ? 1 : 2)
+  requires part ==> uguard[MapLock,Put1](l) && uguardArgs[MapLock,Put1](l) == Seq[Pair[Int, Int]]()
+  requires !part ==> uguard[MapLock,Put2](l) && uguardArgs[MapLock,Put2](l) == Seq[Pair[Int, Int]]()
+  ensures part ==> uguard[MapLock,Put1](l) && allPre[MapLock, Put1](uguardArgs[MapLock,Put1](l))
+  ensures !part ==> uguard[MapLock,Put2](l) && allPre[MapLock, Put2](uguardArgs[MapLock,Put2](l))
+{
+  var i : Int := 0
+  while (i < |inputs|)
+    invariant i >= 0 && i <= |inputs| && low(i)
+    invariant part ==> uguard[MapLock,Put1](l) && allPre[MapLock, Put1](uguardArgs[MapLock,Put1](l))
+    invariant !part ==> uguard[MapLock,Put2](l) && allPre[MapLock, Put2](uguardArgs[MapLock,Put2](l))
+    invariant forall jp: Int :: {inputs[jp]} jp >= 0 && jp < |inputs| ==> shopData(inputs[jp]) && inputs[jp].region == (part ? 1 : 2)
+  {
+    var k: Int
+    var v: Int
+    k := inputs[i].shop
+    v := inputs[i].sales
+    assert shopToRegion(k) == (part ? 1 : 2)
+    assert part ==> uguard[MapLock,Put1](l)
+    if (part){
+        assert low(pair(k, v))
+        with[MapLock] l performing Put1(pair(k, v))  {
+            var tmp1 : MyMap[Int, Int]
+            tmp1 := mapValue(l.lockMap)
+            mapPut(l.lockMap, k, v)
+            assert mapValue(l.lockMap) == put(tmp1, k, v)
+        }
+    }else{
+        assert low(pair(k, v))
+        with[MapLock] l performing Put2(pair(k, v))  {
+            var tmp : MyMap[Int, Int]
+            tmp := mapValue(l.lockMap)
+            mapPut(l.lockMap, k, v)
+            assert mapValue(l.lockMap) == put(tmp, k, v)
+        }
+    }
+
+    i := i + 1
+  }
+}
+
+
+method print(i: Seq[Int])
+  requires lowEvent && low(i)

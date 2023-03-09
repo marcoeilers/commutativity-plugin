@@ -1,52 +1,40 @@
-import "library/unit.vpr"
 import "library/array.vpr"
 
-// Count-vaccinated
+// count-sick-days
 
-method print(i: Int)
-  requires lowEvent && low(i)
-
-method compute(vl: Ref) returns (r1: Bool)
-    requires patient(vl)
-    ensures patient(vl) && low(r1)
+method getSickDays(vl: Ref) returns (r1: Int)
+  requires patient(vl)
+  ensures patient(vl) && low(r1)
 {
-    r1 := vl.vaccinated
+    // Extract number of sick days
+    r1 := vl.sickdays
 }
 
-lockType CounterLock {
+lockType IntLock {
   type Int
-  invariant(l, v) = [l.lockCounter |-> ?cp && [cp.val |-> v]]
+  invariant(l, v) = [l.lockInt |-> ?cp && [cp.val |-> v]]
   alpha(v): Int = v
 
-    actions = [(Add, Unit, duplicable)]
+  actions = [(Add, Int, duplicable)]
 
-      action Add(v, arg)
-        requires true
-      { v + 1 }
+  action Add(v, arg)
+    requires low(arg)
+  { v + arg }
 
   noLabels = N()
 }
 
-predicate joinableArrayEntry(rec: Ref, inputs: Seq[Ref], l: Ref, lbl: Int) {
-  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, lbl)]
-}
-
-
-field lockCounter : Ref
-field val: Int
-
-function N(): Int
-    ensures result > 1
+// Patients have a name, a number of sick days, an Id, and a date of birth.
+// Only the number of sick days is low.
+define patient(r) (
+    acc(r.name) && acc(r.sickdays) && acc(r.id) && acc(r.dob) && low(r.sickdays)
+)
 
 field name: Int
-field vaccinated: Bool
+field sickdays: Int
 field id: Int
 field dob: Int
 
-
-define patient(r) (
-    acc(r.name) && acc(r.vaccinated) && acc(r.id) && acc(r.dob) && low(r.vaccinated)
-)
 
 method main(inputs: Seq[Seq[Ref]])
   requires lowEvent && low(|inputs|) && |inputs| == N()
@@ -57,9 +45,9 @@ method main(inputs: Seq[Seq[Ref]])
   ctr := new(val)
   ctr.val := 0
   var l : Lock
-  l := new(lockCounter)
-  l.lockCounter := ctr
-  share[CounterLock](l, 0)
+  l := new(lockInt)
+  l.lockInt := ctr
+  share[IntLock](l, 0)
   var i : Int := 0
   var threads : Array
   threads := emptyArray(|inputs|)
@@ -67,12 +55,12 @@ method main(inputs: Seq[Seq[Ref]])
     invariant i >= 0 && i <= |inputs| && low(i)
     invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> [loc(threads, j).arr_loc |-> _]
     invariant forall j : Int :: j >= 0 && j < i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, j)
-    invariant sguard[CounterLock,Add](l, intervalSet(i, N())) && sguardArgs[CounterLock, Add](l, intervalSet(i, N())) == Multiset[Unit]()
+    invariant sguard[IntLock,Add](l, intervalSet(i, N())) && sguardArgs[IntLock, Add](l, intervalSet(i, N())) == Multiset[Int]()
     invariant forall ip: Int, jp: Int :: ip >= i && ip < N() && jp >= 0 && jp < |inputs[ip]| ==> patient(inputs[ip][jp])
   {
     var t: Thread
     assert Set(i) union intervalSet(i+1, N()) == intervalSet(i, N())
-    split[CounterLock,Add](l, Set(i), intervalSet(i+1, N()), Multiset[Unit](), Multiset[Unit]())
+    split[IntLock,Add](l, Set(i), intervalSet(i+1, N()), Multiset[Int](), Multiset[Int]())
     t := fork worker(inputs[i], l, i)
     loc(threads, i).arr_loc := t
     fold joinableArrayEntry(loc(threads, i), inputs[i], l, i)
@@ -84,42 +72,52 @@ method main(inputs: Seq[Seq[Ref]])
     invariant i >= 0 && i <= |inputs| && low(i)
     invariant forall j : Int :: j >= 0 && j < |inputs| && j >= i ==> joinableArrayEntry(loc(threads, j), inputs[j], l, j)
     invariant forall j : Int :: j >= 0 && j < i ==> [loc(threads, j).arr_loc |-> _] 
-    invariant sguard[CounterLock,Add](l, intervalSet(0, i)) && allPre[CounterLock, Add](sguardArgs[CounterLock,Add](l, intervalSet(0, i)))
+    invariant sguard[IntLock,Add](l, intervalSet(0, i)) && allPre[IntLock, Add](sguardArgs[IntLock,Add](l, intervalSet(0, i)))
   {
     unfold joinableArrayEntry(loc(threads, i), inputs[i], l, i)
     join[worker](loc(threads, i).arr_loc)
     assert Set(i) union intervalSet(0, i) == intervalSet(0, i + 1)
-    merge[CounterLock, Add](l, Set(i), intervalSet(0, i))
+    merge[IntLock, Add](l, Set(i), intervalSet(0, i))
     i := i + 1
   }
-  unshare[CounterLock](l)
+  unshare[IntLock](l)
 
 
-  print(l.lockCounter.val)
+  print(l.lockInt.val)
 
 }
 
-// 39 c, 41a
+
 method worker(inputs: Seq[Ref], l: Lock, lbl: Int)
-  requires lowEvent && low(|inputs|) && sguard[CounterLock,Add](l, Set(lbl)) && sguardArgs[CounterLock,Add](l, Set(lbl)) == Multiset[Unit]()
+  requires lowEvent && low(|inputs|) && sguard[IntLock,Add](l, Set(lbl)) && sguardArgs[IntLock,Add](l, Set(lbl)) == Multiset[Int]()
   requires forall jp: Int :: jp >= 0 && jp < |inputs| ==> patient(inputs[jp])
-  ensures sguard[CounterLock,Add](l, Set(lbl)) && allPre[CounterLock, Add](sguardArgs[CounterLock,Add](l, Set(lbl)))
+  ensures sguard[IntLock,Add](l, Set(lbl)) && allPre[IntLock, Add](sguardArgs[IntLock,Add](l, Set(lbl)))
 {
   var i : Int := 0
   while (i < |inputs|) 
-    invariant i >= 0 && i <= |inputs| && low(i) && sguard[CounterLock,Add](l, Set(lbl)) && allPre[CounterLock, Add](sguardArgs[CounterLock,Add](l, Set(lbl)))
+    invariant i >= 0 && i <= |inputs| && low(i) && sguard[IntLock,Add](l, Set(lbl)) && allPre[IntLock, Add](sguardArgs[IntLock,Add](l, Set(lbl)))
     invariant forall jp: Int :: jp >= 0 && jp < |inputs| ==> patient(inputs[jp])
   {
-    var v: Bool
-    v := compute(inputs[i])
-    if (v) {
-        with[CounterLock] l performing Add(unit()) at lbl {
-            l.lockCounter.val := l.lockCounter.val + 1
-        }
+    var v: Int
+    v := getSickDays(inputs[i])
+    with[IntLock] l performing Add(v) at lbl {
+        l.lockInt.val := l.lockInt.val + v
     }
-
 
     i := i + 1
   }
 }
-// 15c, 5a
+
+predicate joinableArrayEntry(rec: Ref, inputs: Seq[Ref], l: Ref, lbl: Int) {
+  [rec.arr_loc |-> ?al && joinable[worker](al, inputs, l, lbl)]
+}
+
+
+field lockInt : Ref
+field val: Int
+
+function N(): Int
+    ensures result > 1
+
+method print(i: Int)
+  requires lowEvent && low(i)

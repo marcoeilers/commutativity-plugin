@@ -991,7 +991,7 @@ case class PWith(lockType: PIdnUse, lockExp: PExp, whenExp: Option[PExp], action
   }
 
   override def transform(go: PNode => PNode): PExtender = {
-    PWith(go(lockType).asInstanceOf[PIdnUse], go(lockExp).asInstanceOf[PExp], whenExp.flatMap(w => Some(go(w).asInstanceOf[PIdnUse])), go(actionName).asInstanceOf[PIdnUse], go(actionArg).asInstanceOf[PExp], lbl.flatMap(l => Some(go(l).asInstanceOf[PExp])), go(bod).asInstanceOf[PStmt])
+    PWith(go(lockType).asInstanceOf[PIdnUse], go(lockExp).asInstanceOf[PExp], whenExp.flatMap(w => Some(go(w).asInstanceOf[PExp])), go(actionName).asInstanceOf[PIdnUse], go(actionArg).asInstanceOf[PExp], lbl.flatMap(l => Some(go(l).asInstanceOf[PExp])), go(bod).asInstanceOf[PStmt])
   }
 }
 

@@ -1,25 +1,5 @@
-import "library/pair.vpr"
+import "array.vpr"
 
-domain Array {
-  function loc(a: Array, i: Int): Ref
-  function len(a: Array): Int
-  function loc_inv_arr(r: Ref): Array
-  function loc_inv_index(r: Ref): Int
-
-  axiom all_diff {
-    forall a: Array, i: Int :: {loc(a, i)} loc_inv_arr(loc(a, i)) == a && loc_inv_index(loc(a, i)) == i
-  }
-
-  axiom length_nonneg {
-    forall a: Array :: len(a) >= 0
-  }
-}
-
-field arr_loc: Ref
-
-method emptyArray(n: Int) returns (a: Array)
-  requires n >= 0
-  ensures len(a) == n && forall i : Int :: i >= 0 && i < n ==> acc(loc(a, i).arr_loc)
 
 ////
 
@@ -77,7 +57,6 @@ function nBuckets(): Int
 { 4 }
 
 predicate ListMap(r: Ref) {
-
   (acc(r.key) && acc(r.value) && acc(r.next) && (r.next != null ==> ListMap(r.next) && !ListMap_contains(r.next, r.key)))
 }
 
@@ -116,8 +95,6 @@ method ListMap_put(r: Ref, k: Int, v: Int)
     if (r.key == k) {
       r.value := v
       fold ListMap(r)
-      //assert keys(ListMap_mapValue(res)) == keys(put(old(ListMap_mapValue(r)), k, v))
-      //assert get(ListMap_mapValue(res), k) == get(put(old(ListMap_mapValue(r)), k, v), k)
       assert map_eq(ListMap_mapValue(r), put(old(ListMap_mapValue(r)), k, v))
     }else{
       ListMap_put(r.next, k, v)
@@ -144,8 +121,6 @@ method ListMap_put(r: Ref, k: Int, v: Int)
     assert map_eq(ListMap_mapValue(r), put(old(ListMap_mapValue(r)), k, v))
   }
 }
-
-// array of buckets?
 
 function hashCode(k: Int): Int
   ensures result >= 0 && result < nBuckets()
@@ -215,120 +190,4 @@ method mapGet(r: Ref, k: Int) returns (contained: Bool, vl: Int)
     contained := false
   }
   fold acc(isMap(r), 1/100)
-}
-
-//// until here
-
-
-method print(i: Seq[Int])
-  requires lowEvent && low(i)
-
-domain RegionMap {
-    function shopToRegion(shp: Int): Int
-}
-
-lockType MapLock {
-  type MyMap[Int, Int]
-  invariant(l, v) = [l.lockMap |-> ?mp && isMap(mp) && v == mapValue(mp)]
-  alpha(v): MyMap[Int, Int] = v
-
-  actions = [(Put1, Pair[Int, Int], unique),(Put2, Pair[Int, Int], unique)]
-
-  action Put1(v, arg)
-    requires low(arg) && shopToRegion(fst(arg)) == 1
-  { (put(v, fst(arg), snd(arg))) }
-
-  action Put2(v, arg)
-      requires low(arg) && shopToRegion(fst(arg)) == 2
-    { (put(v, fst(arg), snd(arg))) }
-
-  proof commutativity[Put1, Put2](v, arg1, arg2) {
-    var r1 : MyMap[Int, Int] := put(put(v, fst(arg1), snd(arg1)), fst(arg2), snd(arg2))
-    var r2 : MyMap[Int, Int] := put(put(v, fst(arg2), snd(arg2)), fst(arg1), snd(arg1))
-    assert map_eq(r1, r2)
-  }
-
-  noLabels = 1
-}
-
-function toSeq(s: Set[Int]) : Seq[Int]
-
-field lockMap : Ref
-
-
-define patient(r) (
-    acc(r.shop) && acc(r.sales) && acc(r.region) && low(r.shop) && low(r.sales) && low(r.region) && shopToRegion(r.shop) == r.region
-)
-
-field shop: Int
-field sales: Int
-field region: Int
-
-
-method main(input1: Seq[Ref], input2: Seq[Ref])
-  requires lowEvent && low(|input1|) && low(|input2|)
-  requires forall jp: Int :: {input1[jp]} jp >= 0 && jp < |input1| ==> patient(input1[jp]) && input1[jp].region == 1
-  requires forall jp: Int :: {input2[jp]} jp >= 0 && jp < |input2| ==> patient(input2[jp]) && input2[jp].region == 2
-{
-  var m : Ref
-  m := createMap()
-  var l : Lock
-  l := new(lockMap)
-  l.lockMap := m
-  share[MapLock](l, empty())
-  var t1: Thread
-  var t2: Thread
-  t1 := fork worker(input1, l, true)
-  t2 := fork worker(input2, l, false)
-  join[worker](t1)
-  join[worker](t2)
-  unshare[MapLock](l)
-
-  var res: Seq[Int]
-  res := toSeq(keys(mapValue(l.lockMap)))
-  print(res)
-
-}
-
-
-method worker(inputs: Seq[Ref], l: Lock, part: Bool)
-  requires lowEvent && low(|inputs|)
-  requires forall jp: Int :: {inputs[jp]} jp >= 0 && jp < |inputs| ==> patient(inputs[jp]) && inputs[jp].region == (part ? 1 : 2)
-  requires part ==> uguard[MapLock,Put1](l) && uguardArgs[MapLock,Put1](l) == Seq[Pair[Int, Int]]()
-  requires !part ==> uguard[MapLock,Put2](l) && uguardArgs[MapLock,Put2](l) == Seq[Pair[Int, Int]]()
-  ensures part ==> uguard[MapLock,Put1](l) && allPre[MapLock, Put1](uguardArgs[MapLock,Put1](l))
-  ensures !part ==> uguard[MapLock,Put2](l) && allPre[MapLock, Put2](uguardArgs[MapLock,Put2](l))
-{
-  var i : Int := 0
-  while (i < |inputs|) 
-    invariant i >= 0 && i <= |inputs| && low(i)
-    invariant part ==> uguard[MapLock,Put1](l) && allPre[MapLock, Put1](uguardArgs[MapLock,Put1](l))
-    invariant !part ==> uguard[MapLock,Put2](l) && allPre[MapLock, Put2](uguardArgs[MapLock,Put2](l))
-    invariant forall jp: Int :: {inputs[jp]} jp >= 0 && jp < |inputs| ==> patient(inputs[jp]) && inputs[jp].region == (part ? 1 : 2)
-  {
-    var k: Int
-    var v: Int
-    k := inputs[i].shop
-    v := inputs[i].sales
-    assert shopToRegion(k) == (part ? 1 : 2)
-    if (part){
-        assert low(pair(k, v))
-        with[MapLock] l performing Put1(pair(k, v))  {
-            var tmp1 : MyMap[Int, Int]
-            tmp1 := mapValue(l.lockMap)
-            mapPut(l.lockMap, k, v)
-            assert mapValue(l.lockMap) == put(tmp1, k, v)
-        }
-    }else{
-        assert low(pair(k, v))
-        with[MapLock] l performing Put2(pair(k, v))  {
-            var tmp : MyMap[Int, Int]
-            tmp := mapValue(l.lockMap)
-            mapPut(l.lockMap, k, v)
-            assert mapValue(l.lockMap) == put(tmp, k, v)
-        }
-    }
-
-    i := i + 1
-  }
 }

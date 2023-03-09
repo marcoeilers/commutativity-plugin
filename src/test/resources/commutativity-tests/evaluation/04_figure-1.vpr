@@ -1,0 +1,64 @@
+lockType IntLock {
+  type Int
+  invariant(l, v) = [l.lockInt |-> ?cp && [cp.val |-> v]]
+  alpha(v): Int = 0  // we abstract to a constant, so everything commutes
+
+  actions = [(SetValue, Int, duplicable)]
+
+  action SetValue(v, arg)
+    requires true
+  { arg }  // Just return the new value
+
+  noLabels = 2
+}
+
+field lockInt : Ref
+field val: Int
+
+
+method main()
+  requires lowEvent
+{
+  var ctr : Ref
+  ctr := new(val)
+  ctr.val := 0
+  var l : Lock
+  l := new(lockInt)
+  l.lockInt := ctr
+  share[IntLock](l, 0)
+  var t1: Thread
+  var t2: Thread
+  assert intervalSet(0, 2) == Set(0, 1)
+  assert Set(0) union Set(1) == Set(0, 1)
+  assert Multiset[Int]() union Multiset[Int]() == Multiset[Int]()
+  split[IntLock,SetValue](l, Set(0), Set(1), Multiset[Int](), Multiset[Int]())
+  t1 := fork worker(l, 0)
+  t2 := fork worker(l, 1)
+  join[worker](t1)
+  join[worker](t2)
+  merge[IntLock, SetValue](l, Set(0), Set(1))
+
+  unshare[IntLock](l)
+
+  // Should fail: The lock value is not low.
+  //:: ExpectedOutput(call.precondition:assertion.false)
+  print(l.lockInt.val)
+
+}
+
+
+method worker(l: Lock, lbl: Int)
+  requires lowEvent && sguard[IntLock,SetValue](l, Set(lbl)) && sguardArgs[IntLock,SetValue](l, Set(lbl)) == Multiset[Int]()
+  ensures sguard[IntLock,SetValue](l, Set(lbl)) && allPre[IntLock, SetValue](sguardArgs[IntLock,SetValue](l, Set(lbl)))
+{
+
+    var v: Int
+    v := lbl
+    with[IntLock] l performing SetValue(v) at lbl {
+        l.lockInt.val := v
+    }
+
+}
+
+method print(i: Int)
+  requires lowEvent && low(i)

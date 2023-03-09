@@ -5,7 +5,7 @@ import "library/nat.vpr"
 import "library/list.vpr"
 
 
-
+// we use the same channel resource specification twice (for two different resources)
 lockType Channel {
   type Pair[Seq[Int], Either[Nat, Seq[Int]]]
   invariant(l, v) = [l.queue |-> ?lp && list(lp) && [l.history |-[1/2]-> ?hi && v == pair(hi, right(listValue(lp))) ]]
@@ -70,27 +70,28 @@ method main(inputs: Seq[Int], secret: Int)
   lst1 := createList()
   l1.queue := lst1
   l1.history := Seq[Int]()
+  // create a second channel and second lock
   var l2 : Lock
-    l2 := new(queue, history)
-    var lst2: Ref
-    lst2 := createList()
-    l2.queue := lst2
-    l2.history := Seq[Int]()
+  l2 := new(queue, history)
+  var lst2: Ref
+  lst2 := createList()
+  l2.queue := lst2
+  l2.history := Seq[Int]()
   share[Channel](l1, (let es == (Seq[Int]()) in (pair(es,  (right(es) : Either[Nat, Seq[Int]]) ))) )
   share[Channel](l2, (let es == (Seq[Int]()) in (pair(es,  (right(es) : Either[Nat, Seq[Int]]) ))) )
   var cons : Thread
   var prod : Thread
   var mdl: Thread
-  prod := fork producer(inputs, l1, secret)
-  mdl := fork middle(l1, l2, |inputs|, secret)
-  cons := fork consumer(l2, |inputs|, secret)
+  prod := fork producer(inputs, l1, secret)  // first thread produces into channel 1
+  mdl := fork middle(l1, l2, |inputs|, secret)  // middle thread consumes from channel 1, produces into channel 2
+  cons := fork consumer(l2, |inputs|, secret)  // last thread consumes from channel 2
   join[producer](prod)
   join[middle](mdl)
   var res: Int
   res := join[consumer](cons)
   unshare[Channel](l1)
   unshare[Channel](l2)
-  print(res)
+  print(res)  // result returned by last thread is low.
 }
 
 
