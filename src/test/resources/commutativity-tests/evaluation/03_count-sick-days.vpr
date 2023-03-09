@@ -1,4 +1,4 @@
-import "library/array.vpr"
+import "../library/array.vpr"
 
 // count-sick-days
 

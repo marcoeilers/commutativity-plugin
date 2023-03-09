@@ -1,8 +1,8 @@
-import "library/pair.vpr"
-import "library/unit.vpr"
-import "library/either.vpr"
-import "library/nat.vpr"
-import "library/list.vpr"
+import "../library/pair.vpr"
+import "../library/unit.vpr"
+import "../library/either.vpr"
+import "../library/nat.vpr"
+import "../library/list.vpr"
 
 
 // we use the same channel resource specification twice (for two different resources)

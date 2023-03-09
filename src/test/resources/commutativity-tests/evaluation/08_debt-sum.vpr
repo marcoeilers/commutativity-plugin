@@ -1,6 +1,6 @@
-import "library/seq_multiset.vpr"
-import "library/list.vpr"
-import "library/array.vpr"
+import "../library/seq_multiset.vpr"
+import "../library/list.vpr"
+import "../library/array.vpr"
 
 // debt-sum
 

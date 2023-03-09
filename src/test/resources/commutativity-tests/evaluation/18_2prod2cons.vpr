@@ -1,6 +1,6 @@
-import "library/unit.vpr"
-import "library/seq_multiset.vpr"
-import "library/list.vpr"
+import "../library/unit.vpr"
+import "../library/seq_multiset.vpr"
+import "../library/list.vpr"
 
 
 field prod1: Seq[Int]

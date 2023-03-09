@@ -1,4 +1,4 @@
-import "library/hashmap_ref.vpr"
+import "../library/hashmap_ref.vpr"
 
 // Households, Figure 2
 

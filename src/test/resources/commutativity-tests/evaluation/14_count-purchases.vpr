@@ -1,5 +1,5 @@
-import "library/pair.vpr"
-import "library/hashmap_ref.vpr"
+import "../library/pair.vpr"
+import "../library/hashmap_ref.vpr"
 
 // count-purchases
 
