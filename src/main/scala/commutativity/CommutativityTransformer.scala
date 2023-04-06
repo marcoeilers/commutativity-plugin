@@ -24,21 +24,27 @@ object Extensions {
   }
 }
 
+/*
+ * Implements the encoding of lock specifications, thread fork and join, lock operations, ghost operations,
+ * as well as information flow and action (guard) assertions.
+ */
 trait CommutativityTransformer {
 
   import Extensions._
 
   var nameCtr = 0
 
+  /*
+   * Returns a fresh integer (used to generate fresh names).
+   */
   def getFreshInt(): Int = {
     nameCtr += 1
     nameCtr - 1
   }
 
-  def setBetween(from: Exp, until: Exp, pos: Position, errtrans: ErrTrafo): Exp = {
-    FuncApp("intervalSet", Seq(from, until))(pos, NoInfo, SetType(viper.silver.ast.Int), errtrans)
-  }
-
+  /*
+   * Declares a function "intervalSet(from, until)" representing the set of all integers between from and until.
+   */
   def getIntervalSetFunction() = {
     val frm = LocalVarDecl("$frm", viper.silver.ast.Int)()
     val ntl = LocalVarDecl("$ntl", viper.silver.ast.Int)()
@@ -55,8 +61,16 @@ trait CommutativityTransformer {
     intervalSetFunc
   }
 
+  def setBetween(from: Exp, until: Exp, pos: Position, errtrans: ErrTrafo): Exp = {
+    FuncApp("intervalSet", Seq(from, until))(pos, NoInfo, SetType(viper.silver.ast.Int), errtrans)
+  }
+
   def reportError(error: AbstractError): Unit
 
+  /*
+   * Checks well-definedness criteria for the lock specification em and extracts some information from it into the
+   * supplied maps.
+   */
   def checkDeclarationConsistency(em: ExtensionMember, lockSpecs: mutable.HashMap[String, LockSpec],
                                   actionGuardNames: mutable.HashMap[String, mutable.HashMap[String, (String, Type, Boolean)]]
                                  ) = em match {
@@ -95,6 +109,11 @@ trait CommutativityTransformer {
     }
   }
 
+  /*
+   * For the given method m, generates a predicate representing the right to join a thread running said method,
+   * as well as one function each for each parameter of the method, which represent the argument with which a given
+   * thread is running said method (and stores them in the given maps).
+   */
   def generateJoinable(m: Method, joinableNames: mutable.HashMap[String, String],
                        joinablePreds: mutable.HashMap[String, Predicate],
                        joinableFunctions: mutable.HashMap[String, ListBuffer[Function]]) = {
@@ -114,6 +133,11 @@ trait CommutativityTransformer {
     }
   }
 
+  /*
+   * Generates havoc-methods (that return arbitrary values and can thus be used to havoc local variables),
+   * one for each output parameter of the given method m (with its respective type) and stores them
+   * into newMethods.
+   */
   def generateHavocMethods(m: Method, havocNames: mutable.HashMap[Type, String],
                            newMethods: ListBuffer[Method]) = {
     val name = "$$havoc$" + getFreshInt()
@@ -132,6 +156,17 @@ trait CommutativityTransformer {
     }
   }
 
+  /*
+   * Generates methods for checking various properties of the given lock specification em, and stores them in
+   * newMethods.
+   * Properties checked are:
+   * - the lock invariant uniquely defines the value of the lock.
+   * - the abstraction function alpha is well-defined
+   * - noLabels is non-negative
+   * - the lock specification is valid:
+   *   - each action preserves the low-ness of the abstraction of the lock value
+   *   - every relevant pair of actions commutes (i.e., all actions with all actions except unique actions with themselves)
+   */
   def encodeExtension(em: ExtensionMember, newMethods: ListBuffer[Method]) = em match {
     case l@LockSpec(name, t, inv, alpha, _, actions, proofs, nlabels) => {
 
@@ -267,6 +302,17 @@ trait CommutativityTransformer {
     }
   }
 
+  /*
+   * Encodes a program containing lock specs and other parts of the extended language into a standard Viper program
+   * that can be verified by Viper.
+   * More concretely,
+   * - checks consistency criteria for lock specs
+   * - generates various helper functions, predicates, and methods
+   * - encodes well-definedness and validity checks for lock specs
+   * - transforms all statements, expressions and assertions related to commutativity reasoning
+   * - creates a product program of the resulting program, which also transforms low(e) and lowEvent assertions
+   *   into standard Viper assertions
+   */
   def encodeProgram(input: Program): Program = {
     val lockSpecs = mutable.HashMap[String, LockSpec]()
     val actionGuardNames = mutable.HashMap[String, mutable.HashMap[String, (String, Type, Boolean)]]()
@@ -292,7 +338,7 @@ trait CommutativityTransformer {
     val guardPreds = actionGuardNames.map(ls => ls._2.map(a => Predicate(a._2._1, Seq(LocalVarDecl("$rec", Ref)()) ++ (if (a._2._3) Seq(LocalVarDecl("$lbls", SetType(viper.silver.ast.Int))()) else Seq()), None)())).flatten
     // and a function guardArgs_a depending on the predicate that returns the guard's argument multiset or sequence
     // (depending on whether the action is shared or not).
-    val guardArgFuncs: Seq[Function] = actionGuardNames.map(ls => ls._2.map(a => {
+    val guardArgFuncs: Seq[Function] = actionGuardNames.flatMap(ls => ls._2.map(a => {
       val fname = a._2._1 + "$args"
       val params = Seq(LocalVarDecl("$rec", Ref)()) ++ (if (a._2._3) Seq(LocalVarDecl("$lbls", SetType(viper.silver.ast.Int))()) else Seq())
       val rtype = if (a._2._3) MultisetType(a._2._2) else SeqType(a._2._2)
@@ -300,7 +346,7 @@ trait CommutativityTransformer {
       val posts = if (a._2._3) Seq(Implies(EqCmp(AnySetCardinality(LocalVar("$lbls", SetType(viper.silver.ast.Int))())(), IntLit(0)())(),
         EqCmp(AnySetCardinality(Result(rtype)())(), IntLit(0)())())()) else Seq()
       Function(fname, params, rtype, pres, posts, None)()
-    })).flatten.toSeq
+    })).toSeq
 
     val newPredicates: Seq[Predicate] = input.predicates ++ joinablePreds.values ++ guardPreds
     val newFunctions: Seq[Function] = input.functions ++ guardArgFuncs ++ joinableFunctions.values.flatten
@@ -311,6 +357,7 @@ trait CommutativityTransformer {
 
     val withAdded = input.copy(extensions = Seq(), predicates = newPredicates, functions = newFunctions, methods = newMethods)(input.pos, input.info, input.errT)
 
+    // Function to encode custom expressions and assertions to standard Viper assertions.
     val transformExp: PartialFunction[Node, Exp] = {
       case pt@PointsToPredicate(fa, p, None) =>
         // [x.f --[p]-> _] is encoded to acc(x.f, p)
@@ -366,6 +413,7 @@ trait CommutativityTransformer {
       }
     }
 
+    // Function to transform custom statements to standard Viper code.
     val transformStmt: PartialFunction[Node, Stmt] = {
       case s@Share(lt, lockExp, lockVal) => {
         // share[lt](lockExp, lockVal) is encoded to
@@ -688,11 +736,19 @@ trait CommutativityTransformer {
       }
     }
 
+    // Transform statements, assertions, and expressions.
     var res = withAdded.transform(transformExp orElse transformStmt, Traverse.TopDown)
 
-    res = res.copy(functions = res.functions.filter(f => f.name != "intervalSet") ++ Seq(getIntervalSetFunction()), domains = res.domains ++ Seq(generateAllPre(lockSpecs.values.toSeq)))(res.pos, res.info, res.errT)
+    // Add intervalSet function and allPre function
+    res = res.copy(functions = res.functions.filter(f => f.name != "intervalSet") ++ Seq(getIntervalSetFunction()),
+      domains = res.domains ++ Seq(generateAllPre(lockSpecs.values.toSeq)))(res.pos, res.info, res.errT)
 
+    // Construct product program
     val productRes = SIFExtendedTransformer.transform(res, false)
+
+    // Transform quantified permission assertions to normal form.
+    // Viper normally does this itself, but because of the way we're invoking Viper that step is skipped and we have
+    // to manually perform this step.
     val qpTransformed = productRes.transform({
       case fa: Forall => {
         if (fa.isPure) {
@@ -707,12 +763,20 @@ trait CommutativityTransformer {
     qpTransformed
   }
 
+  /*
+   * Creates a domain that declares, for every action a in every given lock specification, a function
+   * allPre_a(args1, args2): Bool
+   * as well as several axioms to constrain that function.
+   * These axioms are not just the general definition of allPre given in the paper, but essentially various special
+   * cases of that definition that are useful in practice.
+   */
   def generateAllPre(lockSpecs: Seq[LockSpec]): Domain = {
     val domainName = "$all$pre$function$domain"
     val allFuncs: mutable.ListBuffer[DomainFunc] = mutable.ListBuffer()
     val allAxioms: mutable.ListBuffer[DomainAxiom] = mutable.ListBuffer()
     for (lockSpec <- lockSpecs) {
       lockSpec.actions.foreach(a => {
+        // generate function declaration
         val fname = "allpre$" + lockSpec.name + "$" + a.name
         val argType = if (a.duplicable) MultisetType(a.argType) else SeqType(a.argType)
         val fstPar = LocalVarDecl("$fst", argType)()
@@ -723,15 +787,13 @@ trait CommutativityTransformer {
         val emptyMap = Map[TypeVar, Type]()
         val parFapp = DomainFuncApp(func, Seq(fstPar.localVar, sndPar.localVar), emptyMap)()
 
-        // allpre(empty)
+        // axiom: allpre(empty, empty)
         val empty_arg: Exp = if (a.duplicable) EmptyMultiset(a.argType)() else EmptySeq(a.argType)()
         val empty_body = DomainFuncApp(func, Seq(empty_arg, empty_arg), emptyMap)()
         val empty_axiom = DomainAxiom("allpre$empty$" + lockSpec.name + "$" + a.name, empty_body)(domainName = domainName)
         allAxioms.append(empty_axiom)
 
-        // allpre(s, s') ==> |s| == |s'| - is this needed?
-
-        // allpre({v}, {v'}) == pre(v, v') // OOF. use transformer and replace p1, p2 by true?
+        // axiom: forall v, v' :: allpre({v}, {v'}) == a.pre(v, v')
         val fstVal = LocalVarDecl("$fstV", a.argType)()
         val sndVal = LocalVarDecl("$sndV", a.argType)()
         val fstWrapped = if (a.duplicable) ExplicitMultiset(Seq(fstVal.localVar))() else ExplicitSeq(Seq(fstVal.localVar))()
@@ -751,14 +813,16 @@ trait CommutativityTransformer {
 
         if (a.duplicable) {
           if (a.pre == TrueLit()()) {
+            // For the special case where a.pre is just true, generate
+            // axiom: forall args1, args2 :: allpre(args1, args2) == |args1| == |args2|
             val trueBod = EqCmp(parFapp, EqCmp(AnySetCardinality(fstPar.localVar)(), AnySetCardinality(sndPar.localVar)())())()
             val trueTrigger = Trigger(Seq(parFapp))()
             val trueQuant = Forall(Seq(fstPar, sndPar), Seq(trueTrigger), trueBod)()
             val trueAxiom = DomainAxiom("allpre$true$" + lockSpec.name + "$" + a.name, trueQuant)(domainName = domainName)
             allAxioms.append(trueAxiom)
-            // TODO: else if a.pre is unary
           } else {
-            // allpre(s union {v}, s' union {v'}) <== allpre(s, s') &&  pre(v, v')
+            // For shared action a, generate axiom for adding a single value to each argument multiset:
+            // axiom: forall s, s', v, v' :: allpre(s, s') &&  a.pre(v, v') ==> allpre(s union {v}, s' union {v'})
             val fstUnion = AnySetUnion(fstPar.localVar, ExplicitMultiset(Seq(fstVal.localVar))())()
             val sndUnion = AnySetUnion(sndPar.localVar, ExplicitMultiset(Seq(sndVal.localVar))())()
             val unionFapp = DomainFuncApp(func, Seq(fstUnion, sndUnion), emptyMap)()
@@ -768,7 +832,8 @@ trait CommutativityTransformer {
             val unionAxiom = DomainAxiom("allpre$union$" + lockSpec.name + "$" + a.name, unionQuant)(domainName = domainName)
             allAxioms.append(unionAxiom)
 
-            // allpre(s1 union s2, s'1 union s'2)  <== allpre(s1, s'1) && allpre(s2, s'2)
+            // For shared action a, generate axiom for taking union of argument sets:
+            // forall s1, s2, s'1, s'2 :: allpre(s1, s'1) && allpre(s2, s'2) ==> allpre(s1 union s2, s'1 union s'2)
             val fstParP = LocalVarDecl("$fstP", argType)()
             val sndParP = LocalVarDecl("$sndP", argType)()
             val parPFapp = DomainFuncApp(func, Seq(fstParP.localVar, sndParP.localVar), emptyMap)()
@@ -783,14 +848,16 @@ trait CommutativityTransformer {
           }
         } else {
           if (a.pre == TrueLit()()) {
+            // For the special case where a.pre is just true, generate
+            // axiom: forall args1, args2 :: allpre(args1, args2) == |args1| == |args2|
             val trueBod = EqCmp(parFapp, EqCmp(SeqLength(fstPar.localVar)(), SeqLength(sndPar.localVar)())())()
             val trueTrigger = Trigger(Seq(parFapp))()
             val trueQuant = Forall(Seq(fstPar, sndPar), Seq(trueTrigger), trueBod)()
             val trueAxiom = DomainAxiom("allpre$true$" + lockSpec.name + "$" + a.name, trueQuant)(domainName = domainName)
             allAxioms.append(trueAxiom)
-            // TODO: else if a.pre is unary
           } else {
-            // allpre(s +(x), s' + [x']) <== allpre(s, s') && pre(x, x')
+            // For unique action a, generate axiom for adding a single value to each argument sequence:
+            // forall s, s', x, x' :: allpre(s, s') && a.pre(x, x') ==> allpre(s ++ [x], s' ++ [x'])
             val fstUnion = SeqAppend(fstPar.localVar, ExplicitSeq(Seq(fstVal.localVar))())()
             val sndUnion = SeqAppend(sndPar.localVar, ExplicitSeq(Seq(sndVal.localVar))())()
             val unionFapp = DomainFuncApp(func, Seq(fstUnion, sndUnion), emptyMap)()
@@ -799,7 +866,9 @@ trait CommutativityTransformer {
             val unionQuant = Forall(Seq(fstPar, sndPar, fstVal, sndVal), Seq(unionTrigger), unionQuantBod)()
             val unionAxiom = DomainAxiom("allpre$append$" + lockSpec.name + "$" + a.name, unionQuant)(domainName = domainName)
             allAxioms.append(unionAxiom)
-            // allpre(s, s') == |s| == |s'| && forall i: {s[i], s'[i]} i>= 0 && i < |s| ==<  pre(s[i], s'[i])
+
+            // General definition of allpre:
+            // forall s, s': allpre(s, s') == |s| == |s'| && forall i: {s[i], s'[i]} i>= 0 && i < |s| ==>  pre(s[i], s'[i])
             val genFapp = DomainFuncApp(func, Seq(fstPar.localVar, sndPar.localVar), emptyMap)()
             val genLenEq = EqCmp(SeqLength(fstPar.localVar)(), SeqLength(sndPar.localVar)())()
             val genInnerVar = LocalVarDecl("_i", viper.silver.ast.Int)()
@@ -819,7 +888,7 @@ trait CommutativityTransformer {
       })
     }
 
-    Domain(domainName, allFuncs.toSeq, allAxioms.toSeq, Seq())()
+    Domain(domainName, allFuncs, allAxioms, Seq())()
   }
 }
 
