@@ -170,17 +170,20 @@ trait CommutativityTransformer {
   def encodeExtension(em: ExtensionMember, newMethods: ListBuffer[Method]) = em match {
     case l@LockSpec(name, t, inv, alpha, _, actions, proofs, nlabels) => {
 
-      ////// nlabels positive
+      ////// noLabels >= 0
       val labelsPos = GtCmp(nlabels, IntLit(0)())()
       newMethods.append(Method("$nlabelsPos$" + name + getFreshInt(), Seq(), Seq(), Seq(), Seq(labelsPos), Some(Seqn(Seq(), Seq())()))())
 
       ////// invariant uniquely defines value (ud)
+      // Assumes that the invariant holds with value val1 and value val2.
+      // Then proves that val1 == val2.
+
       // declare 1 lock, 2 value vars
       val udLockVar = LocalVarDecl("$udVar$" + getFreshInt(), Ref)()
       val udVal1 = LocalVarDecl("$udVar1$" + getFreshInt(), t)()
       val udVal2 = LocalVarDecl("$udVar2$" + getFreshInt(), t)()
 
-      // inhale perms
+      // inhale invariant permissions
       val perms = inv.permissionsWithArgs(Seq(udLockVar.localVar, udVal1.localVar))
 
       // inhale val def on first and second var
@@ -193,18 +196,30 @@ trait CommutativityTransformer {
       })
       val sameVal = EqCmp(udVal1.localVar, udVal2.localVar)(l.pos, errT = uniquenessTrafo)
 
-      val udMethod = Method("$udCheck$" + name + "$" + getFreshInt(), Seq(udLockVar, udVal1, udVal2), Seq(), Seq(perms, valDef1, valDef2), Seq(sameVal), Some(Seqn(Seq(), Seq())()))(l.pos, errT = uniquenessTrafo)
+      // method(lockVar, val1, val2)
+      //   requires Inv.permissions(lockVar, val1)
+      //   requires Inv.values(lockVar, val1)
+      //   requires Inv.values(lockVar, val2)
+      //   ensures val1 == val2
+      // {}
+      // If the postcondition holds, the invariant uniquely defines the value.
+      val udMethod = Method("$udCheck$" + name + "$" + getFreshInt(), Seq(udLockVar, udVal1, udVal2), Seq(),
+        Seq(perms, valDef1, valDef2), Seq(sameVal), Some(Seqn(Seq(), Seq())()))(l.pos, errT = uniquenessTrafo)
       newMethods.append(udMethod)
 
       /////// alpha is well-defined
       val alphaWDV = LocalVarDecl("$alphaWDVar$" + getFreshInt(), t)()
       val alphaWDInv = alpha.lowWithArg(alphaWDV.localVar, alpha.exp.pos)
+
+      // method(v)
+      //  requires low(alpha(v))
+      // If the precondition is well-defined, then alpha is well-defined.
       val alphaWDMethod = Method("$secWD$" + name + "$" + getFreshInt(), Seq(alphaWDV), Seq(), Seq(alphaWDInv), Seq(), None)(l.pos)
       newMethods.append(alphaWDMethod)
 
       for (a <- actions) {
 
-        ////// actionX2 preserves lowness of abstraction
+        ////// action preserves lowness of abstraction (part of validity)
         // declare original, final val, ret val variables
         val presOrigVar = LocalVarDecl("$presOrig$" + getFreshInt(), t)()
         val presArgVar = LocalVarDecl("$presArg$" + getFreshInt(), a.argType)()
@@ -222,7 +237,6 @@ trait CommutativityTransformer {
         val preservationTrafo = ErrTrafo({
           case PostconditionViolated(node, _, reason, _) => PreservationCheckFailed(a.name, node, reason)
         })
-        //val presPostcond = a.post.replaceT(a.params(0).localVar, presOrigVar.localVar).replaceT(a.params(1).localVar, presArgVar.localVar).replaceT(Result(a.retType)(), presRetVar.localVar)
         val presSecInvFinal = alpha.lowWithArg(presFinalVar.localVar, alpha.exp.pos)
         val presProof = proofs.find(p => p.proofType == "preservation" && p.actions.length == 1 && p.actions(0) == a.name)
         val presBody = presProof match {
@@ -233,13 +247,23 @@ trait CommutativityTransformer {
           case PostconditionViolated(node, _, reason, _) => PreservationCheckFailed(a.name, node, reason)
         }), List(), Some(po)))
         }
-        val presMethod = Method("$presCheck$" + getFreshInt(), Seq(presOrigVar, presArgVar, presFinalVar), Seq(), Seq(SIFLowEventExp()(), presSecInv, presPrecond, presFinalValEq), presPosts, presBody)(a.pos, errT = preservationTrafo)
+
+        // method(orig, arg, final)
+        //   requires lowEvent
+        //   requires low(alpha(orig))
+        //   requires a.pre(orig, arg)
+        //   requires a(orig, arg) == final
+        //   ensures low(alpha(final))
+        // { <proof if available> }
+
+        val presMethod = Method("$presCheck$" + getFreshInt(), Seq(presOrigVar, presArgVar, presFinalVar), Seq(),
+          Seq(SIFLowEventExp()(), presSecInv, presPrecond, presFinalValEq), presPosts, presBody)(a.pos, errT = preservationTrafo)
         newMethods.append(presMethod)
 
         val a1 = a
         for (a2 <- actions) {
           if (actions.indexOf(a1) < actions.indexOf(a2) || (a1 == a2 && a1.duplicable)) {
-            // for every action with every other action including itself
+            // for every action with every other action including itself (except for unique actions)
 
             ////// actions commute
             // all vars
@@ -259,8 +283,10 @@ trait CommutativityTransformer {
             val commOrigSecInv = alpha.lowWithArg(commOrigDecl.localVar)
 
             // define results
-            val commResA1 = EqCmp(commRes1Decl.localVar, a1.newVal.replaceT(a1.params(0).localVar, commOrig1Decl.localVar).replaceT(a1.params(1).localVar, commArg1Decl.localVar))(a1.newVal.pos, errT = NodeTrafo(a1.newVal))
-            val commResA2 = EqCmp(commRes2Decl.localVar, a2.newVal.replaceT(a2.params(0).localVar, commOrig2Decl.localVar).replaceT(a2.params(1).localVar, commArg2Decl.localVar))(a2.newVal.pos, errT = NodeTrafo(a2.newVal))
+            val commResA1 = EqCmp(commRes1Decl.localVar, a1.newVal.replaceT(a1.params(0).localVar, commOrig1Decl.localVar).replaceT(
+              a1.params(1).localVar, commArg1Decl.localVar))(a1.newVal.pos, errT = NodeTrafo(a1.newVal))
+            val commResA2 = EqCmp(commRes2Decl.localVar, a2.newVal.replaceT(a2.params(0).localVar, commOrig2Decl.localVar).replaceT(
+              a2.params(1).localVar, commArg2Decl.localVar))(a2.newVal.pos, errT = NodeTrafo(a2.newVal))
 
             // define both execution orders
             val commOpt1Orig = EqCmp(commOrigDecl.localVar, commOrig1Decl.localVar)()
@@ -279,9 +305,9 @@ trait CommutativityTransformer {
             })
             val commCheckSecInv = alpha.lowWithArg(commFinalDecl.localVar)
 
-
             val commName = "$commCheck$" + a1.name + "$" + a2.name + "$" + getFreshInt()
-            val commParams = Seq(commOrigDecl, commFinalDecl, commChoiceDecl, commOrig1Decl, commOrig2Decl, commArg1Decl, commArg2Decl, commRes1Decl, commRes2Decl)
+            val commParams = Seq(commOrigDecl, commFinalDecl, commChoiceDecl, commOrig1Decl, commOrig2Decl,
+              commArg1Decl, commArg2Decl, commRes1Decl, commRes2Decl)
             val commPres = Seq(SIFLowEventExp()(), commPreA1, commPreA2, commOrigSecInv, commResA1, commResA2, commOptions)
             val commPosts = Seq((commCheckSecInv, SIFLowExp(alpha.exp)(alpha.exp.pos))).map { case (p, po) => EqCmp(TrueLit()(), p)(a1.pos, errT = Trafos(List({
               case PostconditionViolated(node, _, reason, _) => CommutativityCheckFailed(a1.name, a2.name, node, reason)
@@ -290,10 +316,24 @@ trait CommutativityTransformer {
 
             val commProof = proofs.find(p => p.proofType == "commutativity" && p.actions(0) == a1.name && p.actions(1) == a2.name)
             val commBody = if (commProof.isDefined) {
-              commProof.get.body.replaceT(commProof.get.params(0).localVar, commOrigDecl.localVar).replaceT(commProof.get.params(1).localVar, commArg1Decl.localVar).replaceT(commProof.get.params(2).localVar, commArg2Decl.localVar)
+              commProof.get.body.replaceT(commProof.get.params(0).localVar, commOrigDecl.localVar).replaceT(
+                commProof.get.params(1).localVar, commArg1Decl.localVar).replaceT(commProof.get.params(2).localVar, commArg2Decl.localVar)
             } else {
               Seqn(Seq(), Seq())()
             }
+
+            // method(orig, final, choice, orig1, orig2, arg1, arg2, res1, res2)
+            //   requires lowEvent
+            //   requires a1.pre(orig1, arg1)
+            //   requires a2.pre(orig2, arg2)
+            //   requires low(alpha(orig))
+            //   requires res1 == a1(orig1, arg1)
+            //   requires res2 == a2(orig2, arg2)
+            //   requires choice ? (orig == orig1 && res1 == orig2 && final == res2)  // both orders are possible
+            //                   : (orig == orig2 && res2 == orig1 && final == res1)
+            //   ensures low(alpha(final))
+            // { <proof if available> }
+
             val commMethod = Method(commName, commParams, Seq(), commPres, commPosts, Some(commBody))(a1.pos, errT = commutativityTrafo)
             newMethods.append(commMethod)
           }
@@ -543,7 +583,7 @@ trait CommutativityTransformer {
 
         val lockSpec = lockSpecs.get(lt).get
         val a = lockSpec.actions.find(la => la.name == actionName).get
-        // assert guard
+        // assert guard_a(lockExp)
         val guardArgs = Seq(lockExp) ++ (if (lbl.isDefined) Seq(ExplicitSet(Seq(lbl.get))()) else Seq())
         val guardPred = PredicateAccess(guardArgs, actionGuardNames.get(lt).get.get(actionName).get._1)(w.pos)
         val fp = FullPerm()()
@@ -556,8 +596,8 @@ trait CommutativityTransformer {
         val oldGuardArgsName = "$oldGuardArgs$" + getFreshInt()
         val oldGuardArgsDecl = LocalVarDecl(oldGuardArgsName, guardArgsType)()
         val oldGuardArgsAssign = LocalVarAssign(oldGuardArgsDecl.localVar, guardArgsFa)()
-        // exhale guard
-        // inhale lockinv(v)
+
+        // inhale Inv(lockExp, invVal)
         val invValDummyName = "$invVal$" + getFreshInt()
         val invValDummyDecl = LocalVarDecl(invValDummyName, lockSpec.t)()
         val invPerms = lockSpec.invariant.withArgs(Seq(lockExp, invValDummyDecl.localVar))
@@ -574,10 +614,10 @@ trait CommutativityTransformer {
         }
         val actionNewVal = a.newVal.replaceT(a.params(0).localVar, invValDummyDecl.localVar).replace(a.params(1).localVar, arg)
         val invAfterAction = lockSpec.invariant.withArgs(Seq(lockExp, actionNewVal))
+        // exhale Inv(lockExp, newInvVal)
         val exhaleInvAfterAction = Exhale(invAfterAction)(w.pos)
-        // exhale inv(action(v, arg))
 
-        // inhale guard(guardargs ++ arg, lbls)
+        // inhale guard_a(lockExp)
         val inhaleGuardAfter = Inhale(guardPredAcc)()
         val newGuardArgsExp = if (a.duplicable) {
           AnySetUnion(oldGuardArgsDecl.localVar, ExplicitMultiset(Seq(arg))())()
@@ -585,7 +625,7 @@ trait CommutativityTransformer {
           SeqAppend(oldGuardArgsDecl.localVar, ExplicitSeq(Seq(arg))())()
         }
         val assumeNewGuardArgs = Inhale(EqCmp(guardArgsFa, newGuardArgsExp)())()
-        // assert pre(arg) && allpre(oldguardargs) ==> allpre(newguardargs)
+        // assert allPre(tmp) && a.pre(arg) ==> allPre(tmp ++ [arg])
         val actionPre = a.pre.replaceT(a.params(0).localVar, invValDummyDecl.localVar).replace(a.params(1).localVar, arg)
         val oldAllPre = SIFLowExp(oldGuardArgsDecl.localVar, Some("allpre$" + lockSpec.name + "$" + a.name))()
         val newAllPre = SIFLowExp(guardArgsFa, Some("allpre$" + lockSpec.name + "$" + a.name))()
@@ -606,9 +646,9 @@ trait CommutativityTransformer {
 
         val lockSpec = lockSpecs.get(lt).get
         val a = lockSpec.actions.find(la => la.name == actionName).get
-        // assert intersect lbls1, lbls2 == empty
+        // assert lbls1 intersect lbls2 == Set()
         val assertEmptyIntersect = Assert(EqCmp(AnySetIntersection(lbls1, lbls2)(), EmptySet(viper.silver.ast.Int)())())(m.pos)
-        // assert guard(lbls1), guard(lbls2)
+        // assert acc(guard_a(lockExp, lbls1)) && acc(guard_a(lockExp, lbls2))
         val fp = FullPerm()()
         val guardPredLbls1 = PredicateAccess(Seq(lockExp, lbls1), actionGuardNames.get(lt).get.get(actionName).get._1)(m.pos)
         val guardPredAccLbls1 = PredicateAccessPredicate(guardPredLbls1, fp)(m.pos)
@@ -624,9 +664,9 @@ trait CommutativityTransformer {
         val oldGuardArgsAssign1 = LocalVarAssign(oldGuardArgsDecl1.localVar, guardArgsLbls1)()
         val oldGuardArgsDecl2 = LocalVarDecl(oldGuardArgsName + "$2", guardArgsType)()
         val oldGuardArgsAssign2 = LocalVarAssign(oldGuardArgsDecl2.localVar, guardArgsLbls2)()
-        // exhale guards
+        // exhale acc(guard_a(lockExp, lbls1)) && acc(guard_a(lockExp, lbls2))
         val exhaleGuards = Exhale(And(guardPredAccLbls1, guardPredAccLbls2)(m.pos))(m.pos)
-        // inhale guard(lbls1 ++ lbls2, args1 ++ args2)
+        // inhale guard_a(lockExp, lbls1 union lbls2)
         val guardPredAfter = PredicateAccess(Seq(lockExp, AnySetUnion(lbls1, lbls2)()), actionGuardNames.get(lt).get.get(actionName).get._1)()
         val guardPredAfterAcc = PredicateAccessPredicate(guardPredAfter, fp)()
         val inhaleAfter = Inhale(guardPredAfterAcc)()
@@ -639,37 +679,38 @@ trait CommutativityTransformer {
         // assert lbls1 intersect lbls2 == Set()
         // assert guard_a(lockExp, lbls1 union lbls2)
         // assert guardArgs_a(lockExp, lbls1 union lbls2) == args1 union args2
+        // exhale guard_a(lockExp, lbls1 union lbls2)
         // inhale guard_a(lockExp, lbls1) && guard_a(lockExp, lbls2)
         // assume guardArgs_a(lockExp, lbls1) == args1 && guardArgs_a(lockExp, lbls2) == args2
 
         val lockSpec = lockSpecs.get(lt).get
         val a = lockSpec.actions.find(la => la.name == actionName).get
-        // assert intersect lbls1, lbls2 == empty
+        // assert lbls1 intersect lbls2 == Set()
         val assertEmptyIntersect = Assert(EqCmp(AnySetIntersection(lbls1, lbls2)(), EmptySet(viper.silver.ast.Int)())(s.pos))(s.pos)
 
-        // assert guard(lbls ++ lbls2)
+        // assert guard_a(lockExp, lbls union lbls2)
         val guardPredCombined = PredicateAccess(Seq(lockExp, AnySetUnion(lbls1, lbls2)()), actionGuardNames.get(lt).get.get(actionName).get._1)(s.pos)
         val fp = FullPerm()()
         val guardPredCombinedAcc = PredicateAccessPredicate(guardPredCombined, fp)(s.pos)
 
         val assertCombined = Assert(guardPredCombinedAcc)(s.pos)
 
-        // assert guardargs == args1 ++ args2
+        // assert guardArgs_a(lockExp, lbls1 union lbls2) == args1 union args2
         val guardArgsType = MultisetType(a.argType)
         val guardArgsCombined = FuncApp(actionGuardNames.get(lt).get.get(actionName).get._1 + "$args", Seq(lockExp, AnySetUnion(lbls1, lbls2)()))(s.pos, s.info, guardArgsType, errT = NoTrafos)
         val assertCombinedSum = Assert(EqCmp(guardArgsCombined, AnySetUnion(args1, args2)())(s.pos))(s.pos)
 
-        // exhale guard
+        // exhale guard_a(lockExp, lbls1 union lbls2)
         val exhaleCombined = Exhale(guardPredCombinedAcc)(s.pos)
 
 
-        // inhale guard(lbls1), guard(lbls2)
+        // inhale guard_a(lockExp, lbls1)
         val guardPredLbls1 = PredicateAccess(Seq(lockExp, lbls1), actionGuardNames.get(lt).get.get(actionName).get._1)()
         val guardPredAccLbls1 = PredicateAccessPredicate(guardPredLbls1, fp)()
         val guardPredLbls2 = PredicateAccess(Seq(lockExp, lbls2), actionGuardNames.get(lt).get.get(actionName).get._1)()
         val guardPredAccLbls2 = PredicateAccessPredicate(guardPredLbls2, fp)()
         val inhaleGuards = Inhale(And(guardPredAccLbls1, guardPredAccLbls2)())()
-        // assume new guard args
+        // inhale guard_a(lockExp, lbls2)
         val guardArgsLbls1 = FuncApp(actionGuardNames.get(lt).get.get(actionName).get._1 + "$args", Seq(lockExp, lbls1))(s.pos, s.info, guardArgsType, errT = NoTrafos)
         val guardArgsLbls2 = FuncApp(actionGuardNames.get(lt).get.get(actionName).get._1 + "$args", Seq(lockExp, lbls2))(s.pos, s.info, guardArgsType, errT = NoTrafos)
         val assumeGuardArgs1 = Inhale(EqCmp(guardArgsLbls1, args1)())()
