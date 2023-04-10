@@ -6,6 +6,9 @@ import viper.silver.verifier.{ConsistencyError, VerificationResult}
 import viper.silver.ast.pretty.FastPrettyPrinter.{ContOps, parens, show, ssep, text, value}
 import viper.silver.sif.SIFLowExp
 
+/*
+ * Defines new AST nodes for lock specifications and added statements and assertions/expressions.
+ */
 
 case class AlphaDef(param: LocalVarDecl, typ: Type, exp: Exp)  {
   def subnodes = Seq(param, typ, exp)

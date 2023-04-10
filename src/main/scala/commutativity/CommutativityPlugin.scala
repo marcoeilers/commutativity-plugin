@@ -6,6 +6,10 @@ import viper.silver.plugin.SilverPlugin
 import viper.silver.verifier._
 
 
+/*
+ * Central plugin class that hooks into Viper's extension mechanisms to install parser extensions,
+ * perform additional well-definesdness checks, and transform the Viper program before verification.
+ */
 class CommutativityPlugin extends CommutativityParser with CommutativityTransformer with SilverPlugin {
 
   /*

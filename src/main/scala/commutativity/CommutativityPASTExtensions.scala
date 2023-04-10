@@ -6,6 +6,10 @@ import viper.silver.sif.{SIFLowEventExp, SIFLowExp}
 
 import scala.collection.mutable.ListBuffer
 
+/*
+ * Defines ParseAST nodes for all language extensions (which contain code that defines how to type check them)
+ */
+
 
 case class PSimplePointsToPredicate(receiver: PFieldAccess, perm: PExp, arg: PExp) extends PExtender with PExp {
 

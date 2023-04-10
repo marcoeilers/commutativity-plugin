@@ -3,6 +3,10 @@ package commutativity
 import viper.silver.verifier.{AbstractVerificationError, ErrorMessage, ErrorReason}
 import viper.silver.verifier.errors.ErrorNode
 
+/*
+ * Defines new custom error classes.
+ */
+
 case class CommutativityCheckFailed(a1: String, a2: String, offendingNode: ErrorNode, reason: ErrorReason,
                                     override val cached: Boolean = false) extends AbstractVerificationError {
   val id: String = "commutativity.check.failed"
