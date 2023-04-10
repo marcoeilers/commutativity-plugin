@@ -82,9 +82,9 @@ trait CommutativityTransformer {
         reportError(TypecheckerError("History invariant must be pure", hist.get.inv.pos))
       }
       inv.inv.visit {
-        case _: Lock => reportError(TypecheckerError("Invariants must not contain lock() assertions.", inv.inv.pos))
-        case _: Locked => reportError(TypecheckerError("Invariants must not contain locked() assertions.", inv.inv.pos))
-        case _: Barrier => reportError(TypecheckerError("Invariants must not contain barrier() assertions.", inv.inv.pos))
+        case _: SGuard => reportError(TypecheckerError("Invariants must not contain guard-assertions.", inv.inv.pos))
+        case _: UGuard => reportError(TypecheckerError("Invariants must not contain guard-assertions.", inv.inv.pos))
+        case _: SIFLowExp => reportError(TypecheckerError("Invariants must not contain low() assertions.", inv.inv.pos))
       }
 
       lockSpecs.update(name, l)
