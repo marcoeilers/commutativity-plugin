@@ -1,0 +1,132 @@
+field f: Int
+
+lockType Okay {
+  type Int
+  invariant(l, v) = [l.f |-[2/3]-> ?fv && v == 2*fv && v >= 0]
+  alpha(v): Int = v
+
+  actions = [(Add,Int,unique),(Add2,Int,duplicable)]
+
+  action Add(v, a)
+    requires low(a) && a > 0
+  { (v + a) }
+
+  action Add2(v, a)
+      requires low(a) && a > 0
+    { (v + a) }
+
+  noLabels = 5
+}
+
+method okay(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+  ensures sguard[Okay, Add2](l, intervalSet(0, 3))
+  ensures sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    assert intervalSet(0, 3) == Set(0, 1) union Set(2)
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
+    assert Set(1, 0) == Set(0, 1)
+    merge[Okay, Add2](l, Set(1, 0), Set(2))
+    assert intervalSet(0, 3) == Set(1, 0) union Set(2)
+    assert Multiset(2, 3, 4) union Multiset(3) == Multiset(2, 3, 3, 4)
+}
+
+method splitFail1(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    // here
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
+}
+
+method splitFail2(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    assert intervalSet(0, 3) == Set(0, 1) union Set(2)
+    // here
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 4), Multiset(3))
+}
+
+method splitFail3(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    // here
+    split[Okay, Add2](l, Set(0, 1), Set(1, 2), Multiset(2, 3, 4), Multiset(3))
+}
+
+method splitFail4(l: Lock)
+{
+    // here
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
+}
+
+method splitFail5(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    assert intervalSet(0, 3) == Set(0, 1) union Set(2)
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
+    // here
+    assert sguard[Okay, Add2](l, intervalSet(0, 3))
+}
+
+method smoke(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+  ensures sguard[Okay, Add2](l, intervalSet(0, 3))
+  ensures sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+  // here
+  ensures false
+{
+    assert intervalSet(0, 3) == Set(0, 1) union Set(2)
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
+    assert Set(1, 0) == Set(0, 1)
+    merge[Okay, Add2](l, Set(1, 0), Set(2))
+    assert intervalSet(0, 3) == Set(1, 0) union Set(2)
+    assert Multiset(2, 3, 4) union Multiset(3) == Multiset(2, 3, 3, 4)
+}
+
+method mergeFail1(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    // here
+    merge[Okay, Add2](l, Set(1, 0), Set(2))
+}
+
+method mergeFail2(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    assert intervalSet(0, 3) == Set(0, 1) union Set(2)
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
+    assert Set(1, 0) == Set(0, 1)
+    // here
+    merge[Okay, Add2](l, Set(1, 0, 2), Set(2))
+}
+
+method mergeFail3(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    assert intervalSet(0, 3) == Set(0, 1) union Set(2)
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
+    // here
+    merge[Okay, Add2](l, Set(1), Set(2))
+}
+
+method mergeFail4(l: Lock)
+  requires sguard[Okay, Add2](l, intervalSet(0, 3))
+  requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
+{
+    assert intervalSet(0, 3) == Set(0, 1) union Set(2)
+    split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
+    assert sguard[Okay, Add2](l, Set(2))
+    assert Set(1, 0) == Set(0, 1)
+    merge[Okay, Add2](l, Set(1, 0), Set(2))
+    // here
+    assert sguard[Okay, Add2](l, Set(2))
+}

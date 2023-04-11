@@ -1,8 +1,9 @@
 field f: Int
+field g: Int
 
 lockType Okay {
   type Int
-  invariant(l, v) = [l.f |-[1/2]-> ?fv && v == 2*fv && v >= 0]
+  invariant(l, v) = [l.f |-[2/3]-> ?fv && v == 2*fv && v >= 0]
   alpha(v): Int = v
 
   actions = [(Add,Int,unique),(Add2,Int,duplicable)]
@@ -14,13 +15,15 @@ lockType Okay {
   action Add2(v, a)
       requires low(a) && a > 0
     { (v + a) }
+
+  noLabels = 5
 }
 
 method okay() returns (l: Lock, val : Int)
   requires lowEvent
-  ensures lock[Okay](l, write) && guard[Okay,Add](l) && guard[Okay,Add2](l) && guard[Okay,Add2](l)
+  ensures uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
 {
-  l := newLock[Okay](f)
+  l := new(f)
   l.f := 23
   share[Okay](l, 46)
 }
@@ -30,7 +33,7 @@ method okaySmoke() returns (l: Lock, val : Int)
   //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures false
 {
-  l := newLock[Okay](f)
+  l := new(f)
   l.f := 23
   share[Okay](l, 46)
 }
@@ -38,38 +41,18 @@ method okaySmoke() returns (l: Lock, val : Int)
 method doubleUniqueGuard() returns (l: Lock, val : Int)
   requires lowEvent
   //:: ExpectedOutput(postcondition.violated:insufficient.permission)
-  ensures lock[Okay](l, write) && guard[Okay,Add](l) && guard[Okay,Add](l)
+  ensures uguard[Okay,Add](l) && uguard[Okay,Add](l)
 {
-  l := newLock[Okay](f)
-  l.f := 23
-  share[Okay](l, 46)
-}
-
-method doubleLock() returns (l: Lock, val : Int)
-  requires lowEvent
-  //:: ExpectedOutput(postcondition.violated:insufficient.permission)
-  ensures lock[Okay](l, 2/3) && lock[Okay](l, 1/2)
-{
-  l := newLock[Okay](f)
-  l.f := 23
-  share[Okay](l, 46)
-}
-
-method stillLocked() returns (l: Lock, val : Int)
-  requires lowEvent
-  //:: ExpectedOutput(postcondition.violated:insufficient.permission)
-  ensures lock[Okay](l, write) && locked[Okay](l, 46)
-{
-  l := newLock[Okay](f)
+  l := new(f)
   l.f := 23
   share[Okay](l, 46)
 }
 
 method doubleShare() returns (l: Lock, val : Int)
   requires lowEvent
-  ensures lock[Okay](l, write) && guard[Okay,Add](l) && guard[Okay,Add2](l) && guard[Okay,Add2](l)
+  ensures uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
 {
-  l := newLock[Okay](f)
+  l := new(f)
   l.f := 23
   share[Okay](l, 46)
   //:: ExpectedOutput(share.failed:insufficient.permission)
@@ -77,41 +60,117 @@ method doubleShare() returns (l: Lock, val : Int)
 }
 
 method noLowEvent() returns (l: Lock, val : Int)
-  requires true
-  ensures lock[Okay](l, write)
+  ensures uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
 {
-  l := newLock[Okay](f)
+  l := new(f)
   l.f := 23
   //:: ExpectedOutput(share.failed:assertion.false)
   share[Okay](l, 46)
 }
 
-method invNotFulfilled1() returns (l: Lock, val : Int)
+method invNotSat() returns (l: Lock, val : Int)
   requires lowEvent
-  ensures lock[Okay](l, write)
+  ensures uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
 {
-  l := newLock[Okay](f)
+  l := new(f)
   l.f := -23
   //:: ExpectedOutput(share.failed:assertion.false)
   share[Okay](l, -46)
 }
 
-method invNotFulfilled2() returns (l: Lock, val : Int)
+method invNotSat2() returns (l: Lock, val : Int)
   requires lowEvent
-  ensures lock[Okay](l, write)
+  ensures uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
 {
-  l := newLock[Okay]()
+  l := new(f)
+  l.f := 23
+  exhale acc(l.f, 1/2)
   //:: ExpectedOutput(share.failed:insufficient.permission)
-  share[Okay](l, -46)
+  share[Okay](l, 46)
+}
+
+method wrongVal() returns (l: Lock, val : Int)
+  requires lowEvent
+  ensures uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
+{
+  l := new(f)
+  l.f := 23
+  //:: ExpectedOutput(share.failed:assertion.false)
+  share[Okay](l, 47)
+}
+
+method valNotLow(h: Int) returns (l: Lock, val : Int)
+  requires lowEvent
+  ensures uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
+{
+  l := new(f)
+  l.f := h
+  //:: ExpectedOutput(share.failed:assertion.false)
+  share[Okay](l, 2 * h)
 }
 
 
-method secInvNotFulfilled(h: Int) returns (l: Lock, val : Int)
-  requires lowEvent && h > 0
-  ensures lock[Okay](l, write)
+method unshareOkay(l: Lock) returns (val : Int)
+  requires lowEvent
+  requires uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
+  requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
+  requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
+  ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
 {
-  l := newLock[Okay](f)
-  l.f := h
-  //:: ExpectedOutput(share.failed:assertion.false)
-  share[Okay](l, 2*h)
+  unshare[Okay](l)
+}
+
+method unshareNoAllPre(l: Lock) returns (val : Int)
+  requires lowEvent
+  requires uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
+  requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
+  ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
+{
+  // here
+  unshare[Okay](l)
+}
+
+method unshareNoAllPre2(l: Lock) returns (val : Int)
+  requires lowEvent
+  requires uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
+  requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
+  ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
+{
+  // here
+  unshare[Okay](l)
+}
+
+method unshareSmoke(l: Lock) returns (val : Int)
+  requires lowEvent
+  requires uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
+  requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
+  requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
+  ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
+  // here
+  ensures false
+{
+  unshare[Okay](l)
+}
+
+method unshareNoFullGuard(l: Lock) returns (val : Int)
+  requires lowEvent
+  requires uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 4))
+  requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
+  requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
+  ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
+{
+  // here
+  unshare[Okay](l)
+}
+
+method unshareGuardNotConsumed(l: Lock) returns (val : Int)
+  requires lowEvent
+  requires uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 5))
+  requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
+  requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
+  ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
+  // here
+  ensures uguard[Okay,Add](l)
+{
+  unshare[Okay](l)
 }

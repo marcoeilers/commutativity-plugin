@@ -17,7 +17,6 @@ domain Pair[T,V] {
   axiom bijection {
     forall p: Pair[T, V] :: {fst(p)}{snd(p)} pair(fst(p),snd(p))==p
   }
-
 }
 
 // simple with secinv okay, not okay
@@ -35,6 +34,8 @@ lockType Okay {
   action Inc(v, a)
     requires true
   { pair(fst(v) + 1, a) }
+
+  noLabels = 5
 }
 
 lockType NoCommute {
@@ -52,6 +53,8 @@ lockType NoCommute {
   action Mul(v, a)
     requires low(a)
   { pair(fst(v) * a, a) }
+
+  noLabels = 5
 }
 
 // one with itself, unique and duplicable
@@ -65,6 +68,8 @@ lockType OkayBecauseUnique {
   action Sub(v, a)
     requires low(a)
   { pair(a - fst(v), snd(v)) }
+
+  noLabels = 5
 }
 
 lockType NotOkayBecauseDuplicable {
@@ -78,6 +83,8 @@ lockType NotOkayBecauseDuplicable {
     action Sub(v, a)
       requires low(a)
     { pair(a - fst(v), snd(v)) }
+
+    noLabels = 5
 }
 
 // proof makes it okay
@@ -96,6 +103,8 @@ lockType OkayBecauseProofAssumption {
   proof commutativity[Sub, Sub](v, a1, a2) {
     assume a1 == a2
   }
+
+  noLabels = 5
 }
 
 // assert in proof
@@ -118,4 +127,6 @@ lockType OkayButAssert {
     //:: ExpectedOutput(assert.failed:assertion.false)
     assert false
   }
+
+  noLabels = 5
 }

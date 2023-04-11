@@ -10,6 +10,8 @@ lockType Okay {
   action Add(v, a)
     requires low(a) && a > 0
   { (v + a) }
+
+  noLabels = 5
 }
 
 lockType NotLow {
@@ -23,6 +25,8 @@ lockType NotLow {
   action Add(v, a)
     requires a > 0
   { (v + a) }
+
+  noLabels = 5
 }
 
 lockType NotLowButAssumeInProof {
@@ -39,6 +43,8 @@ lockType NotLowButAssumeInProof {
   proof preservation[Add](v0, a0) {
     assume low(a0)
   }
+
+  noLabels = 5
 }
 
 lockType OkayButAssertFalse {
@@ -56,5 +62,7 @@ lockType OkayButAssertFalse {
     //:: ExpectedOutput(assert.failed:assertion.false)
     assert false
   }
+
+  noLabels = 5
 }
 

@@ -7,6 +7,8 @@ lockType Okay {
   alpha(v): Int = v
 
   actions = []
+
+  noLabels = 5
 }
 
 //:: ExpectedOutput(uniqueness.check.failed:assertion.false)
@@ -16,6 +18,8 @@ lockType NotDefined {
   alpha(v): Int = v
 
   actions = []
+
+  noLabels = 5
 }
 
 //:: ExpectedOutput(uniqueness.check.failed:assertion.false)
@@ -25,4 +29,6 @@ lockType NotUnique {
   alpha(v): Int = v
 
   actions = []
+
+  noLabels = 5
 }

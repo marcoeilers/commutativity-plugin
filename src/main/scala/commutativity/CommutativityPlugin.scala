@@ -53,7 +53,15 @@ class CommutativityPlugin extends CommutativityParser with CommutativityTransfor
     input match {
       case Failure(errors) =>
         // Improved error reporting should happen here, but is not currently implemented.
-        Failure(errors)
+        Failure(errors.map{
+          case err: AbstractVerificationError =>
+            try {
+              err.transformedError()
+            } catch {
+              case _: Exception => err
+            }
+          case err => err
+        })
       case Success => input
     }
   }

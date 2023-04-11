@@ -9,6 +9,7 @@ lockType InvNotWelldef {
 
   actions = []
 
+  noLabels = 5
 
 }
 
@@ -19,7 +20,7 @@ lockType InvNotWelldef2 {
   alpha(v): Int = v
 
   actions = []
-
+  noLabels = 5
 
 }
 
@@ -30,6 +31,8 @@ lockType SecInvNotWelldef {
   alpha(v): Int = (2 \ (v+1))
 
   actions = []
+
+  noLabels = 5
 }
 
 
@@ -44,6 +47,8 @@ lockType NewValNotWellDef {
     requires low(a)
   //:: ExpectedOutput(not.wellformed:division.by.zero)
   { (v \ a) }
+
+  noLabels = 5
 }
 
 lockType PreNotWellDef {
@@ -57,4 +62,17 @@ lockType PreNotWellDef {
     //:: ExpectedOutput(not.wellformed:division.by.zero)
     requires low(2\a)
   { (v + a) }
+
+  noLabels = 5
+}
+
+lockType NoLabelsBad {
+  type Int
+  invariant(l, v) = [l.f |-> ?fv && v == 2*fv]
+  alpha(v): Int = v
+
+  actions = []
+
+  //:: ExpectedOutput(not.wellformed:assertion.false)
+  noLabels = -1
 }
