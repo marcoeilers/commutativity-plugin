@@ -6,7 +6,7 @@ import viper.silver.ast.utility.rewriter.Traverse
 import viper.silver.sif.SIFExtendedTransformer.{MethodControlFlowVars, TranslationContext}
 import viper.silver.sif.{SIFExtendedTransformer, SIFLowEventExp, SIFLowExp}
 import viper.silver.verifier.{AbstractError, TypecheckerError}
-import viper.silver.verifier.errors.{AssertFailed, ExhaleFailed, PostconditionViolated}
+import viper.silver.verifier.errors.{AssertFailed, AssignmentFailed, ContractNotWellformed, ExhaleFailed, InhaleFailed, PostconditionViolated}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -171,8 +171,11 @@ trait CommutativityTransformer {
     case l@LockSpec(name, t, inv, alpha, _, actions, proofs, nlabels) => {
 
       ////// noLabels >= 0
-      val labelsPos = GtCmp(nlabels, IntLit(0)())()
-      newMethods.append(Method("$nlabelsPos$" + name + getFreshInt(), Seq(), Seq(), Seq(), Seq(labelsPos), Some(Seqn(Seq(), Seq())()))())
+      val noLabelsTrafo = ErrTrafo({
+        case PostconditionViolated(node, _, reason, _) => ContractNotWellformed(node, reason)
+      })
+      val labelsPos = GtCmp(nlabels, IntLit(0)())(nlabels.pos, errT = noLabelsTrafo)
+      newMethods.append(Method("$nlabelsPos$" + name + getFreshInt(), Seq(), Seq(), Seq(), Seq(labelsPos), Some(Seqn(Seq(), Seq())()))(nlabels.pos, errT = noLabelsTrafo))
 
       ////// invariant uniquely defines value (ud)
       // Assumes that the invariant holds with value val1 and value val2.
@@ -545,10 +548,10 @@ trait CommutativityTransformer {
             (SeqType(a.argType), EmptySeq(a.argType)())
           }
           val pa = PredicateAccess(args, guardNames.get(a.name).get._1)()
-          val fa = FuncApp(guardNames.get(a.name).get._1 + "$args", args)(u.pos, NoInfo, argsType, errT = NodeTrafo(u))
-          guardAsserts.append(Assert(PredicateAccessPredicate(pa, fp)(u.pos, errT = NodeTrafo(u)))(u.pos, errT = NodeTrafo(u)))
+          val fa = FuncApp(guardNames.get(a.name).get._1 + "$args", args)(u.pos, NoInfo, argsType, errT = errTrafo)
+          guardAsserts.append(Assert(PredicateAccessPredicate(pa, fp)(u.pos, errT = errTrafo))(u.pos, errT = errTrafo))
           guardExhales.append(Exhale(PredicateAccessPredicate(pa, fp)(u.pos, errT = NodeTrafo(u)))(u.pos, errT = NodeTrafo(u)))
-          guardAllPreAsserts.append(Assert(SIFLowExp(fa, Some("allpre$" + lockSpec.name + "$" + a.name))())())
+          guardAllPreAsserts.append(Assert(SIFLowExp(fa, Some("allpre$" + lockSpec.name + "$" + a.name))(u.pos, errT = errTrafo))(u.pos, errT = errTrafo))
         }
 
         // assert lowEvent
@@ -583,12 +586,20 @@ trait CommutativityTransformer {
 
         val lockSpec = lockSpecs.get(lt).get
         val a = lockSpec.actions.find(la => la.name == actionName).get
+
+        val errTrafo = ErrTrafo({
+          case AssertFailed(_, reason, _) => WithFailed(w, reason)
+          case ExhaleFailed(_, reason, _) => WithFailed(w, reason)
+          case AssignmentFailed(_, reason, _) => WithFailed(w, reason)
+          case InhaleFailed(_, reason, _) => WithFailed(w, reason)
+        })
+
         // assert guard_a(lockExp)
         val guardArgs = Seq(lockExp) ++ (if (lbl.isDefined) Seq(ExplicitSet(Seq(lbl.get))()) else Seq())
         val guardPred = PredicateAccess(guardArgs, actionGuardNames.get(lt).get.get(actionName).get._1)(w.pos)
         val fp = FullPerm()()
-        val guardPredAcc = PredicateAccessPredicate(guardPred, fp)(w.pos)
-        val assertGuard = Assert(guardPredAcc)(w.pos)
+        val guardPredAcc = PredicateAccessPredicate(guardPred, fp)(w.pos, errT = errTrafo)
+        val assertGuard = Assert(guardPredAcc)(w.pos, errT = errTrafo)
         val exhaleGuard = Exhale(guardPredAcc)(w.pos)
         // remember guardargs
         val guardArgsType = if (a.duplicable) MultisetType(a.argType) else SeqType(a.argType)
@@ -606,8 +617,8 @@ trait CommutativityTransformer {
         val (whenExpAssume, whenExpVar) = if (whenExp.isDefined) {
           val whenExpTmpName = "$whenExpTmp$" + getFreshInt()
           val whenExpTmpDecl = LocalVarDecl(whenExpTmpName, viper.silver.ast.Bool)()
-          val whenExpAssign = LocalVarAssign(whenExpTmpDecl.localVar, whenExp.get)()
-          val whenExpAssume = Inhale(whenExpTmpDecl.localVar)()
+          val whenExpAssign = LocalVarAssign(whenExpTmpDecl.localVar, whenExp.get)(w.pos, errT = errTrafo)
+          val whenExpAssume = Inhale(whenExpTmpDecl.localVar)(w.pos, errT = errTrafo)
           (Seq(whenExpAssign, whenExpAssume), Some(whenExpTmpDecl))
         } else {
           (Seq(), None)
@@ -615,7 +626,7 @@ trait CommutativityTransformer {
         val actionNewVal = a.newVal.replaceT(a.params(0).localVar, invValDummyDecl.localVar).replace(a.params(1).localVar, arg)
         val invAfterAction = lockSpec.invariant.withArgs(Seq(lockExp, actionNewVal))
         // exhale Inv(lockExp, newInvVal)
-        val exhaleInvAfterAction = Exhale(invAfterAction)(w.pos)
+        val exhaleInvAfterAction = Exhale(invAfterAction)(w.pos, errT = errTrafo)
 
         // inhale guard_a(lockExp)
         val inhaleGuardAfter = Inhale(guardPredAcc)()
@@ -624,12 +635,12 @@ trait CommutativityTransformer {
         } else {
           SeqAppend(oldGuardArgsDecl.localVar, ExplicitSeq(Seq(arg))())()
         }
-        val assumeNewGuardArgs = Inhale(EqCmp(guardArgsFa, newGuardArgsExp)())()
+        val assumeNewGuardArgs = Inhale(EqCmp(guardArgsFa, newGuardArgsExp)(w.pos))(w.pos, errT = errTrafo)
         // assert allPre(tmp) && a.pre(arg) ==> allPre(tmp ++ [arg])
         val actionPre = a.pre.replaceT(a.params(0).localVar, invValDummyDecl.localVar).replace(a.params(1).localVar, arg)
         val oldAllPre = SIFLowExp(oldGuardArgsDecl.localVar, Some("allpre$" + lockSpec.name + "$" + a.name))()
         val newAllPre = SIFLowExp(guardArgsFa, Some("allpre$" + lockSpec.name + "$" + a.name))()
-        val assertAllPreUpdate = Assert(Implies(And(actionPre, oldAllPre)(), newAllPre)(w.pos))(w.pos)
+        val assertAllPreUpdate = Assert(Implies(And(actionPre, oldAllPre)(), newAllPre)(w.pos, errT = errTrafo))(w.pos, errT = errTrafo)
         Seqn(Seq(assertGuard, oldGuardArgsAssign, exhaleGuard, inhaleInv) ++ whenExpAssume ++ Seq(bod, exhaleInvAfterAction, inhaleGuardAfter, assumeNewGuardArgs, assertAllPreUpdate),
           Seq(oldGuardArgsDecl, invValDummyDecl) ++ whenExpVar.toIterator)(w.pos)
       }
@@ -646,15 +657,20 @@ trait CommutativityTransformer {
 
         val lockSpec = lockSpecs.get(lt).get
         val a = lockSpec.actions.find(la => la.name == actionName).get
+
+        val errTrafo = ErrTrafo({
+          case AssertFailed(_, reason, _) => MergeFailed(m, reason)
+        })
+
         // assert lbls1 intersect lbls2 == Set()
-        val assertEmptyIntersect = Assert(EqCmp(AnySetIntersection(lbls1, lbls2)(), EmptySet(viper.silver.ast.Int)())())(m.pos)
+        val assertEmptyIntersect = Assert(EqCmp(AnySetIntersection(lbls1, lbls2)(), EmptySet(viper.silver.ast.Int)())(m.pos, errT = errTrafo))(m.pos, errT = errTrafo)
         // assert acc(guard_a(lockExp, lbls1)) && acc(guard_a(lockExp, lbls2))
         val fp = FullPerm()()
         val guardPredLbls1 = PredicateAccess(Seq(lockExp, lbls1), actionGuardNames.get(lt).get.get(actionName).get._1)(m.pos)
         val guardPredAccLbls1 = PredicateAccessPredicate(guardPredLbls1, fp)(m.pos)
         val guardPredLbls2 = PredicateAccess(Seq(lockExp, lbls2), actionGuardNames.get(lt).get.get(actionName).get._1)(m.pos)
         val guardPredAccLbls2 = PredicateAccessPredicate(guardPredLbls2, fp)(m.pos)
-        val assertGuards = Assert(And(guardPredAccLbls1, guardPredAccLbls2)(m.pos))(m.pos)
+        val assertGuards = Assert(And(guardPredAccLbls1, guardPredAccLbls2)(m.pos, errT = errTrafo))(m.pos, errT = errTrafo)
         // remember args1, args2
         val guardArgsType = MultisetType(a.argType)
         val guardArgsLbls1 = FuncApp(actionGuardNames.get(lt).get.get(actionName).get._1 + "$args", Seq(lockExp, lbls1))(m.pos, m.info, guardArgsType, errT = NoTrafos)
@@ -685,23 +701,28 @@ trait CommutativityTransformer {
 
         val lockSpec = lockSpecs.get(lt).get
         val a = lockSpec.actions.find(la => la.name == actionName).get
+
+        val errTrafo = ErrTrafo({
+          case AssertFailed(_, reason, _) => SplitFailed(s, reason)
+        })
+
         // assert lbls1 intersect lbls2 == Set()
-        val assertEmptyIntersect = Assert(EqCmp(AnySetIntersection(lbls1, lbls2)(), EmptySet(viper.silver.ast.Int)())(s.pos))(s.pos)
+        val assertEmptyIntersect = Assert(EqCmp(AnySetIntersection(lbls1, lbls2)(), EmptySet(viper.silver.ast.Int)())(s.pos, errT = errTrafo))(s.pos, errT = errTrafo)
 
         // assert guard_a(lockExp, lbls union lbls2)
         val guardPredCombined = PredicateAccess(Seq(lockExp, AnySetUnion(lbls1, lbls2)()), actionGuardNames.get(lt).get.get(actionName).get._1)(s.pos)
         val fp = FullPerm()()
-        val guardPredCombinedAcc = PredicateAccessPredicate(guardPredCombined, fp)(s.pos)
+        val guardPredCombinedAcc = PredicateAccessPredicate(guardPredCombined, fp)(s.pos, errT = errTrafo)
 
-        val assertCombined = Assert(guardPredCombinedAcc)(s.pos)
+        val assertCombined = Assert(guardPredCombinedAcc)(s.pos, errT = errTrafo)
 
         // assert guardArgs_a(lockExp, lbls1 union lbls2) == args1 union args2
         val guardArgsType = MultisetType(a.argType)
         val guardArgsCombined = FuncApp(actionGuardNames.get(lt).get.get(actionName).get._1 + "$args", Seq(lockExp, AnySetUnion(lbls1, lbls2)()))(s.pos, s.info, guardArgsType, errT = NoTrafos)
-        val assertCombinedSum = Assert(EqCmp(guardArgsCombined, AnySetUnion(args1, args2)())(s.pos))(s.pos)
+        val assertCombinedSum = Assert(EqCmp(guardArgsCombined, AnySetUnion(args1, args2)())(s.pos, errT = errTrafo))(s.pos, errT = errTrafo)
 
         // exhale guard_a(lockExp, lbls1 union lbls2)
-        val exhaleCombined = Exhale(guardPredCombinedAcc)(s.pos)
+        val exhaleCombined = Exhale(guardPredCombinedAcc)(s.pos, errT = errTrafo)
 
 
         // inhale guard_a(lockExp, lbls1)

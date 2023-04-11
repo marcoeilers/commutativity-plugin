@@ -126,7 +126,7 @@ method unshareNoAllPre(l: Lock) returns (val : Int)
   requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
   ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
 {
-  // here
+  //:: ExpectedOutput(unshare.failed:assertion.false)
   unshare[Okay](l)
 }
 
@@ -136,7 +136,7 @@ method unshareNoAllPre2(l: Lock) returns (val : Int)
   requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
   ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
 {
-  // here
+  //:: ExpectedOutput(unshare.failed:assertion.false)
   unshare[Okay](l)
 }
 
@@ -146,7 +146,7 @@ method unshareSmoke(l: Lock) returns (val : Int)
   requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
   requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
   ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
-  // here
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures false
 {
   unshare[Okay](l)
@@ -156,10 +156,10 @@ method unshareNoFullGuard(l: Lock) returns (val : Int)
   requires lowEvent
   requires uguard[Okay,Add](l) && sguard[Okay,Add2](l, intervalSet(0, 4))
   requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
-  requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
+  requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 4)))
   ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
 {
-  // here
+  //:: ExpectedOutput(unshare.failed:insufficient.permission)
   unshare[Okay](l)
 }
 
@@ -169,7 +169,7 @@ method unshareGuardNotConsumed(l: Lock) returns (val : Int)
   requires allPre[Okay, Add](uguardArgs[Okay,Add](l))
   requires allPre[Okay, Add2](sguardArgs[Okay, Add2](l, intervalSet(0, 5)))
   ensures acc(l.f, 2/3) && l.f >= 0 && low(l.f)
-  // here
+  //:: ExpectedOutput(postcondition.violated:insufficient.permission)
   ensures uguard[Okay,Add](l)
 {
   unshare[Okay](l)

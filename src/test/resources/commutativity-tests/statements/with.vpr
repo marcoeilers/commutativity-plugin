@@ -38,7 +38,7 @@ method sharedSmoke1(l: Lock) returns (r: Int)
   ensures sguardArgs[Okay, Add2](l, Set(3)) == Multiset(4)
 {
   with[Okay] l when l.f > 5 performing Add2(4) at 3 {
-    // here
+    //:: ExpectedOutput(assert.failed:assertion.false)
     assert false
     l.f := l.f + 2
   }
@@ -49,7 +49,7 @@ method sharedSmoke2(l: Lock) returns (r: Int)
   requires sguardArgs[Okay, Add2](l, Set(3)) == Multiset()
   ensures sguard[Okay, Add2](l, Set(3))
   ensures sguardArgs[Okay, Add2](l, Set(3)) == Multiset(4)
-  // here
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures false
 {
   with[Okay] l when l.f > 5 performing Add2(4) at 3 {
@@ -61,7 +61,7 @@ method sharedArgsChanged(l: Lock) returns (r: Int)
   requires sguard[Okay, Add2](l, Set(3))
   requires sguardArgs[Okay, Add2](l, Set(3)) == Multiset()
   ensures sguard[Okay, Add2](l, Set(3))
-  // here
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures sguardArgs[Okay, Add2](l, Set(3)) == Multiset()
 {
   with[Okay] l when l.f > 5 performing Add2(4) at 3 {
@@ -72,7 +72,7 @@ method sharedArgsChanged(l: Lock) returns (r: Int)
 
 method sharedNoGuard(l: Lock) returns (r: Int)
 {
-  // here
+  //:: ExpectedOutput(with.failed:insufficient.permission)
   with[Okay] l when l.f > 5 performing Add2(4) at 3 {
     assert l.f > 3
     l.f := l.f + 2
@@ -85,7 +85,7 @@ method sharedWrongLabel(l: Lock) returns (r: Int)
   ensures sguard[Okay, Add2](l, Set(3))
   ensures sguardArgs[Okay, Add2](l, Set(3)) == Multiset(4)
 {
-  // here
+  //:: ExpectedOutput(with.failed:insufficient.permission)
   with[Okay] l performing Add2(4) at 7 {
     assert l.f > 3
     l.f := l.f + 2
@@ -98,7 +98,7 @@ method sharedNotActionArg(l: Lock) returns (r: Int)
   ensures sguard[Okay, Add2](l, Set(3))
   ensures sguardArgs[Okay, Add2](l, Set(3)) == Multiset(4)
 {
-  // here
+  //:: ExpectedOutput(with.failed:assertion.false)
   with[Okay] l performing Add2(4) at 3 {
     l.f := l.f + 7
   }
@@ -110,7 +110,7 @@ method sharedNotAllPre(l: Lock, h: Int) returns (r: Int)
   requires h % 2 == 0 && h > 0
   ensures sguard[Okay, Add2](l, Set(3))
   ensures sguardArgs[Okay, Add2](l, Set(3)) == Multiset(h)
-  // here
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures allPre[Okay, Add2](Multiset(h))
 {
   with[Okay] l when l.f > 5 performing Add2(h) at 3 {
@@ -140,7 +140,7 @@ method uniqueSmoke1(l: Lock) returns (r: Int)
   ensures allPre[Okay, Add](Seq(4))
 {
   with[Okay] l when l.f > 5 performing Add(4)  {
-    // here
+    //:: ExpectedOutput(assert.failed:assertion.false)
     assert false
     l.f := l.f + 2
   }
@@ -152,7 +152,7 @@ method uniqueSmoke2(l: Lock) returns (r: Int)
   ensures uguard[Okay, Add](l)
   ensures uguardArgs[Okay, Add](l) == Seq(4)
   ensures allPre[Okay, Add](Seq(4))
-  // here
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures false
 {
   with[Okay] l when l.f > 5 performing Add(4)  {
@@ -165,7 +165,7 @@ method uniqueGuardsChanged(l: Lock) returns (r: Int)
   requires uguard[Okay, Add](l)
   requires uguardArgs[Okay, Add](l) == Seq()
   ensures uguard[Okay, Add](l)
-  // here
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures uguardArgs[Okay, Add](l) == Seq()
 {
   with[Okay] l when l.f > 5 performing Add(4)  {
@@ -177,7 +177,7 @@ method uniqueGuardsChanged(l: Lock) returns (r: Int)
 method uniqueNoGuard(l: Lock) returns (r: Int)
 
 {
-  // here
+  //:: ExpectedOutput(with.failed:insufficient.permission)
   with[Okay] l when l.f > 5 performing Add(4)  {
     assert l.f > 3
     l.f := l.f + 2
@@ -190,7 +190,7 @@ method uniqueWrongAction(l: Lock) returns (r: Int)
   ensures uguard[Okay, Add](l)
   ensures uguardArgs[Okay, Add](l) == Seq(4)
 {
-  // here
+  //:: ExpectedOutput(with.failed:assertion.false)
   with[Okay] l when l.f > 5 performing Add(4)  {
     assert l.f > 3
     l.f := l.f + 7
@@ -203,7 +203,7 @@ method uniqueNotAllPre(l: Lock, h: Int) returns (r: Int)
   requires uguardArgs[Okay, Add](l) == Seq()
   ensures uguard[Okay, Add](l)
   ensures uguardArgs[Okay, Add](l) == Seq(h)
-  // here
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures allPre[Okay, Add](Seq(h))
 {
   with[Okay] l when l.f > 5 performing Add(h)  {

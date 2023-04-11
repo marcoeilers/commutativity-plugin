@@ -47,36 +47,6 @@ case class UniquenessCheckFailed(lt: String, offendingNode: ErrorNode, reason: E
   override def withReason(r: ErrorReason): AbstractVerificationError = UniquenessCheckFailed(lt, offendingNode, r)
 }
 
-case class HistoryNotReflexive(lt: String, offendingNode: ErrorNode, reason: ErrorReason,
-                                 override val cached: Boolean = false) extends AbstractVerificationError {
-  val id: String = "history.not.reflexive"
-  val text: String = "History invariant of lock type " + lt + " might not be reflexive."
-  override def withNode(offendingNode: ErrorNode = this.offendingNode): ErrorMessage =
-    HistoryNotReflexive(lt, offendingNode, this.reason)
-
-  override def withReason(r: ErrorReason): AbstractVerificationError = HistoryNotReflexive(lt, offendingNode, r)
-}
-
-case class HistoryNotTransitive(lt: String, offendingNode: ErrorNode, reason: ErrorReason,
-                               override val cached: Boolean = false) extends AbstractVerificationError {
-  val id: String = "history.not.transitive"
-  val text: String = "History invariant of lock type " + lt + " might not be transitive."
-  override def withNode(offendingNode: ErrorNode = this.offendingNode): ErrorMessage =
-    HistoryNotTransitive(lt, offendingNode, this.reason)
-
-  override def withReason(r: ErrorReason): AbstractVerificationError = HistoryNotTransitive(lt, offendingNode, r)
-}
-
-case class HistoryNotPreserved(lt: String, action: String, offendingNode: ErrorNode, reason: ErrorReason,
-                                override val cached: Boolean = false) extends AbstractVerificationError {
-  val id: String = "history.not.preserved"
-  val text: String = "History invariant of lock type " + lt + " might not be preserved by action " + action + "."
-  override def withNode(offendingNode: ErrorNode = this.offendingNode): ErrorMessage =
-    HistoryNotPreserved(lt, action, offendingNode, this.reason)
-
-  override def withReason(r: ErrorReason): AbstractVerificationError = HistoryNotPreserved(lt, action, offendingNode, r)
-}
-
 case class ForkFailed(offendingNode: Fork, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
   val id = "fork.failed"
   val text = "Fork might fail."
@@ -93,20 +63,12 @@ case class JoinFailed(offendingNode: Join, reason: ErrorReason, override val cac
   def withReason(r: ErrorReason) = JoinFailed(offendingNode, r)
 }
 
-case class AcquireFailed(offendingNode: Acquire, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
-  val id = "acquire.failed"
-  val text = "Acquire might fail."
+case class WithFailed(offendingNode: With, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
+  val id = "with.failed"
+  val text = "With-statement might fail."
 
-  def withNode(offendingNode: ErrorNode = this.offendingNode) = AcquireFailed(offendingNode.asInstanceOf[Acquire], this.reason)
-  def withReason(r: ErrorReason) = AcquireFailed(offendingNode, r)
-}
-
-case class ReleaseFailed(offendingNode: Release, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
-  val id = "release.failed"
-  val text = "Release might fail."
-
-  def withNode(offendingNode: ErrorNode = this.offendingNode) = ReleaseFailed(offendingNode.asInstanceOf[Release], this.reason)
-  def withReason(r: ErrorReason) = ReleaseFailed(offendingNode, r)
+  def withNode(offendingNode: ErrorNode = this.offendingNode) = WithFailed(offendingNode.asInstanceOf[With], this.reason)
+  def withReason(r: ErrorReason) = WithFailed(offendingNode, r)
 }
 
 case class ShareFailed(offendingNode: Share, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
@@ -125,59 +87,18 @@ case class UnshareFailed(offendingNode: Unshare, reason: ErrorReason, override v
   def withReason(r: ErrorReason) = UnshareFailed(offendingNode, r)
 }
 
-case class WaitFailed(offendingNode: Wait, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
-  val id = "wait.failed"
-  val text = "Wait might fail."
+case class SplitFailed(offendingNode: Split, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
+  val id = "split.failed"
+  val text = "Split-statement might fail."
 
-  def withNode(offendingNode: ErrorNode = this.offendingNode) = WaitFailed(offendingNode.asInstanceOf[Wait], this.reason)
-  def withReason(r: ErrorReason) = WaitFailed(offendingNode, r)
+  def withNode(offendingNode: ErrorNode = this.offendingNode) = SplitFailed(offendingNode.asInstanceOf[Split], this.reason)
+  def withReason(r: ErrorReason) = SplitFailed(offendingNode, r)
 }
 
-case class NewBarrierFailed(offendingNode: NewBarrier, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
-  val id = "new.barrier.failed"
-  val text = "Barrier creation might fail."
+case class MergeFailed(offendingNode: Merge, reason: ErrorReason, override val cached: Boolean = false) extends AbstractVerificationError {
+  val id = "merge.failed"
+  val text = "Merge-statement might fail."
 
-  def withNode(offendingNode: ErrorNode = this.offendingNode) = NewBarrierFailed(offendingNode.asInstanceOf[NewBarrier], this.reason)
-  def withReason(r: ErrorReason) = NewBarrierFailed(offendingNode, r)
+  def withNode(offendingNode: ErrorNode = this.offendingNode) = MergeFailed(offendingNode.asInstanceOf[Merge], this.reason)
+  def withReason(r: ErrorReason) = MergeFailed(offendingNode, r)
 }
-
-case class BarrierInvalidTotalInTrueAtZero(offendingNode: ErrorNode, reason: ErrorReason,
-                                    override val cached: Boolean = false) extends AbstractVerificationError {
-  val id: String = "barrier.check.failed.totalin_true"
-  val text: String = "Barrier validity check failed; totalInAfter assertion might not be true at i == 0."
-  override def withNode(offendingNode: ErrorNode = this.offendingNode): ErrorMessage =
-    BarrierInvalidTotalInTrueAtZero(offendingNode, this.reason)
-
-  override def withReason(r: ErrorReason): AbstractVerificationError = BarrierInvalidTotalInTrueAtZero(offendingNode, r)
-}
-
-case class BarrierInvalidTotalInImpliesTotalOut(offendingNode: ErrorNode, reason: ErrorReason,
-                                           override val cached: Boolean = false) extends AbstractVerificationError {
-  val id: String = "barrier.check.failed.totalin_implies_totalout"
-  val text: String = "Barrier validity check failed; totalInAfter assertion might entail totalOutAfter assertion."
-  override def withNode(offendingNode: ErrorNode = this.offendingNode): ErrorMessage =
-    BarrierInvalidTotalInImpliesTotalOut(offendingNode, this.reason)
-
-  override def withReason(r: ErrorReason): AbstractVerificationError = BarrierInvalidTotalInImpliesTotalOut(offendingNode, r)
-}
-
-case class BarrierInvalidInEstablishesTotalIn(offendingNode: ErrorNode, reason: ErrorReason,
-                                           override val cached: Boolean = false) extends AbstractVerificationError {
-  val id: String = "barrier.check.failed.in_entails_totalin"
-  val text: String = "Barrier validity check failed; sum of in assertions might not entail totalInAfter assertion."
-  override def withNode(offendingNode: ErrorNode = this.offendingNode): ErrorMessage =
-    BarrierInvalidInEstablishesTotalIn(offendingNode, this.reason)
-
-  override def withReason(r: ErrorReason): AbstractVerificationError = BarrierInvalidInEstablishesTotalIn(offendingNode, r)
-}
-
-case class BarrierInvalidTotalOutEstablishesOut(offendingNode: ErrorNode, reason: ErrorReason,
-                                              override val cached: Boolean = false) extends AbstractVerificationError {
-  val id: String = "barrier.check.failed.totalout_entails_out"
-  val text: String = "Barrier validity check failed; totalOut assertion might not entail sum of out assertions."
-  override def withNode(offendingNode: ErrorNode = this.offendingNode): ErrorMessage =
-    BarrierInvalidTotalOutEstablishesOut(offendingNode, this.reason)
-
-  override def withReason(r: ErrorReason): AbstractVerificationError = BarrierInvalidTotalOutEstablishesOut(offendingNode, r)
-}
-

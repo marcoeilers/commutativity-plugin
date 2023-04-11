@@ -36,7 +36,7 @@ method splitFail1(l: Lock)
   requires sguard[Okay, Add2](l, intervalSet(0, 3))
   requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
 {
-    // here
+    //:: ExpectedOutput(split.failed:assertion.false)
     split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
 }
 
@@ -45,7 +45,7 @@ method splitFail2(l: Lock)
   requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
 {
     assert intervalSet(0, 3) == Set(0, 1) union Set(2)
-    // here
+    //:: ExpectedOutput(split.failed:assertion.false)
     split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 4), Multiset(3))
 }
 
@@ -53,13 +53,13 @@ method splitFail3(l: Lock)
   requires sguard[Okay, Add2](l, intervalSet(0, 3))
   requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
 {
-    // here
+    //:: ExpectedOutput(split.failed:assertion.false)
     split[Okay, Add2](l, Set(0, 1), Set(1, 2), Multiset(2, 3, 4), Multiset(3))
 }
 
 method splitFail4(l: Lock)
 {
-    // here
+    //:: ExpectedOutput(split.failed:insufficient.permission)
     split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
 }
 
@@ -69,7 +69,7 @@ method splitFail5(l: Lock)
 {
     assert intervalSet(0, 3) == Set(0, 1) union Set(2)
     split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
-    // here
+    //:: ExpectedOutput(assert.failed:insufficient.permission)
     assert sguard[Okay, Add2](l, intervalSet(0, 3))
 }
 
@@ -78,7 +78,7 @@ method smoke(l: Lock)
   requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
   ensures sguard[Okay, Add2](l, intervalSet(0, 3))
   ensures sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
-  // here
+  //:: ExpectedOutput(postcondition.violated:assertion.false)
   ensures false
 {
     assert intervalSet(0, 3) == Set(0, 1) union Set(2)
@@ -93,7 +93,7 @@ method mergeFail1(l: Lock)
   requires sguard[Okay, Add2](l, intervalSet(0, 3))
   requires sguardArgs[Okay, Add2](l, intervalSet(0, 3)) == Multiset(2, 3, 3, 4)
 {
-    // here
+    //:: ExpectedOutput(merge.failed:insufficient.permission)
     merge[Okay, Add2](l, Set(1, 0), Set(2))
 }
 
@@ -104,7 +104,7 @@ method mergeFail2(l: Lock)
     assert intervalSet(0, 3) == Set(0, 1) union Set(2)
     split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
     assert Set(1, 0) == Set(0, 1)
-    // here
+    //:: ExpectedOutput(merge.failed:assertion.false)
     merge[Okay, Add2](l, Set(1, 0, 2), Set(2))
 }
 
@@ -114,7 +114,7 @@ method mergeFail3(l: Lock)
 {
     assert intervalSet(0, 3) == Set(0, 1) union Set(2)
     split[Okay, Add2](l, Set(0, 1), Set(2), Multiset(2, 3, 4), Multiset(3))
-    // here
+    //:: ExpectedOutput(merge.failed:insufficient.permission)
     merge[Okay, Add2](l, Set(1), Set(2))
 }
 
@@ -127,6 +127,6 @@ method mergeFail4(l: Lock)
     assert sguard[Okay, Add2](l, Set(2))
     assert Set(1, 0) == Set(0, 1)
     merge[Okay, Add2](l, Set(1, 0), Set(2))
-    // here
+    //:: ExpectedOutput(assert.failed:insufficient.permission)
     assert sguard[Okay, Add2](l, Set(2))
 }
